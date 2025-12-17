@@ -71,7 +71,7 @@ class KriService:
    
  
     # KRI Database Methods
-    async def get_kris_by_status(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_kris_by_status(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return KRIs grouped by status"""
         date_filter = ""
         if start_date and end_date:
@@ -108,7 +108,7 @@ class KriService:
         """
         return await self.execute_query(query)
 
-    async def get_kris_by_level(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_kris_by_level(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return KRIs grouped by risk level"""
         date_filter = ""
         if start_date and end_date:
@@ -131,7 +131,7 @@ class KriService:
         """
         return await self.execute_query(query)
 
-    async def get_breached_kris_by_department(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_breached_kris_by_department(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return breached KRIs by department"""
         date_filter = ""
         if start_date and end_date:
@@ -157,7 +157,7 @@ class KriService:
         """
         return await self.execute_query(query)
 
-    async def get_kri_assessment_count(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_kri_assessment_count(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return KRI assessment count by department"""
         date_filter = ""
         if start_date and end_date:
@@ -182,7 +182,7 @@ class KriService:
         """
         return await self.execute_query(query)
 
-    async def get_kris_list(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_kris_list(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return list of all KRIs"""
         date_filter = ""
         if start_date and end_date:
@@ -214,7 +214,7 @@ class KriService:
         write_debug(f"Query: {query}")
         return await self.execute_query(query)
 
-    async def get_kris_by_status_detail(self, status: str, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_kris_by_status_detail(self, status: str, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return KRIs rows filtered by computed status label (not counts, matches incidents pattern)"""
         write_debug(f"Getting KRIS by status detail: {status}")
        
@@ -292,7 +292,7 @@ class KriService:
         result = await self.execute_query(query)
         return result[0] if result else {}
 
-    async def get_overall_kri_statuses(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_overall_kri_statuses(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return all KRIs with their combined status (for Overall KRI Statuses table)"""
         date_filter = ""
         if start_date and end_date:
@@ -331,7 +331,7 @@ class KriService:
         """
         return await self.execute_query(query)
 
-    async def get_kris_by_level_detailed(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_kris_by_level_detailed(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return KRIs by level with derived logic from latest values (matches Node.js)"""
         date_filter = ""
         if start_date and end_date:
@@ -384,7 +384,7 @@ class KriService:
         """
         return await self.execute_query(query)
 
-    async def get_breached_kris_by_department_detailed(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_breached_kris_by_department_detailed(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return count of KRIs by function (simplified - just count KRIs per function)"""
         date_filter = ""
         if start_date and end_date:
@@ -414,7 +414,7 @@ class KriService:
         """
         return await self.execute_query(query)
 
-    async def get_kri_health(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_kri_health(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return KRI health status list"""
         date_filter = ""
         if start_date and end_date:
@@ -447,7 +447,7 @@ class KriService:
         """
         return await self.execute_query(query)
     
-    async def get_kri_assessment_count_detailed(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_kri_assessment_count_detailed(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return KRI assessment count by function (count assessments from KriValues table)"""
         date_filter = ""
         if start_date and end_date:
@@ -479,7 +479,7 @@ class KriService:
         """
         return await self.execute_query(query)
 
-    async def get_kri_monthly_assessment(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_kri_monthly_assessment(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return monthly KRI counts grouped by assessment"""
         date_filter = ""
         if start_date and end_date:
@@ -506,7 +506,7 @@ class KriService:
         """
         return await self.execute_query(query)
 
-    async def get_newly_created_kris_per_month(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_newly_created_kris_per_month(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return number of newly created KRIs per month"""
         date_filter = ""
         if start_date and end_date:
@@ -528,7 +528,7 @@ class KriService:
         """
         return await self.execute_query(query)
 
-    async def get_deleted_kris_per_month(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_deleted_kris_per_month(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return number of deleted KRIs by month"""
         date_filter = ""
         if start_date and end_date:
@@ -549,7 +549,7 @@ class KriService:
         """
         return await self.execute_query(query)
 
-    async def get_kri_overdue_status_counts(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_kri_overdue_status_counts(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return KRIs overdue vs not overdue based on related Action Plans"""
         date_filter = ""
         if start_date and end_date:
@@ -586,7 +586,7 @@ class KriService:
         """
         return await self.execute_query(query)
 
-    async def get_overdue_kris_by_department(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_overdue_kris_by_department(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return overdue KRIs with department from Actionplans or linked Function"""
         date_filter = ""
         if start_date and end_date:
@@ -620,7 +620,7 @@ class KriService:
         """
         return await self.execute_query(query)
 
-    async def get_all_kris_submitted_by_function(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_all_kris_submitted_by_function(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return all KRIs submitted by function"""
         date_filter = ""
         if start_date and end_date:
@@ -659,7 +659,7 @@ class KriService:
         """
         return await self.execute_query(query)
 
-    async def get_kri_counts_by_month_year(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_kri_counts_by_month_year(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return KRI counts by month and year"""
         date_filter = ""
         if start_date and end_date:
@@ -683,7 +683,7 @@ class KriService:
         """
         return await self.execute_query(query)
 
-    async def get_kri_counts_by_frequency(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_kri_counts_by_frequency(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return KRI counts by frequency"""
         date_filter = ""
         if start_date and end_date:
@@ -705,7 +705,7 @@ class KriService:
         """
         return await self.execute_query(query)
 
-    async def get_kri_risks_by_kri_name(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_kri_risks_by_kri_name(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return risks linked to KRIs (count per KRI name)"""
         date_filter = ""
         if start_date and end_date:
@@ -733,7 +733,7 @@ class KriService:
         """
         return await self.execute_query(query)
 
-    async def get_kri_risk_relationships(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_kri_risk_relationships(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return KRI and Risk relationships (detailed list)"""
         date_filter = ""
         if start_date and end_date:
@@ -761,7 +761,7 @@ class KriService:
         """
         return await self.execute_query(query)
 
-    async def get_kris_without_linked_risks(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_kris_without_linked_risks(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return KRIs without linked risks"""
         date_filter = ""
         if start_date and end_date:
@@ -789,7 +789,7 @@ class KriService:
         """
         return await self.execute_query(query)
 
-    async def get_active_kris_details(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_active_kris_details(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return active KRIs details"""
         date_filter = ""
         if start_date and end_date:

@@ -18,6 +18,7 @@ DashboardActivityService = None  # type: ignore
 from utils.export_utils import get_default_header_config
 from models import ExportRequest, ExportResponse
 from routes.route_utils import write_debug, parse_header_config, merge_header_config, convert_to_boolean, save_and_log_export
+from services.user_function_access_service import user_function_access_service, UserFunctionAccess
 
 # Initialize services
 api_service = APIService()
@@ -49,10 +50,27 @@ async def export_incidents_pdf(
     onlyChart: str = Query("False"),
     chartType: str = Query(None),
     onlyOverallTable: str = Query("False"),
-    tableType: str = Query(None)
+    tableType: str = Query(None),
+    functionId: str = Query(None, description="Filter by specific function ID")
 ):  
     """Export incidents report in PDF format (service-backed like controls)."""
     try:
+        # Get user function access for filtering
+        user = getattr(request.state, 'user', None)
+        write_debug(f"[INCIDENTS PDF] Raw user from request.state: {user}")
+        user_id = user.get('id') if user else None
+        group_name = user.get('groupName') if user else None
+        
+        # If no user info, treat as super admin (no filter) for now
+        if not user_id:
+            access = UserFunctionAccess(is_super_admin=True)
+            function_filter = ""
+            write_debug(f"[INCIDENTS PDF] No user found, treating as super admin (no filter)")
+        else:
+            access = user_function_access_service.get_user_function_access(user_id, group_name)
+            function_filter = user_function_access_service.build_incident_function_filter('i', access, functionId)
+        write_debug(f"[INCIDENTS PDF] User {user_id}, group {group_name}, is_super_admin={access.is_super_admin}, function_ids={access.function_ids}, function_filter: {function_filter}")
+        
         write_debug(f"[INCIDENTS PDF] startDate={startDate} endDate={endDate}")
         write_debug(f"[INCIDENTS PDF] cardType={cardType} onlyCard={onlyCard} onlyChart={onlyChart}")
         write_debug(f"[INCIDENTS PDF] chartType={chartType} onlyOverallTable={onlyOverallTable} tableType={tableType}")
@@ -101,95 +119,95 @@ async def export_incidents_pdf(
 
         write_debug(f"[INCIDENTS PDF] normalized cardType={cardType}")
 
-        # Fetch data via incident_service
+        # Fetch data via incident_service with function filtering
         if not incident_service:
             raise HTTPException(status_code=500, detail="Incident service not available")
 
         data = None
         # Metrics
         if cardType == 'totalIncidents':
-            data = await incident_service.get_incidents_list(startDate, endDate)
+            data = await incident_service.get_incidents_list(startDate, endDate, function_filter)
         elif cardType == 'pendingPreparer':
             write_debug(f"[INCIDENTS PDF] fetching pending preparer incidents for {startDate} to {endDate}")
-            data = await incident_service.get_incidents_by_status('pendingPreparer', startDate, endDate)
+            data = await incident_service.get_incidents_by_status('pendingPreparer', startDate, endDate, function_filter)
         elif cardType == 'pendingChecker':
-            data = await incident_service.get_incidents_by_status('pendingChecker', startDate, endDate)
+            data = await incident_service.get_incidents_by_status('pendingChecker', startDate, endDate, function_filter)
         elif cardType == 'pendingReviewer':
-            data = await incident_service.get_incidents_by_status('pendingReviewer', startDate, endDate)
+            data = await incident_service.get_incidents_by_status('pendingReviewer', startDate, endDate, function_filter)
         elif cardType == 'pendingAcceptance':
-            data = await incident_service.get_incidents_by_status('pendingAcceptance', startDate, endDate)
+            data = await incident_service.get_incidents_by_status('pendingAcceptance', startDate, endDate, function_filter)
             
       
         # Charts
         elif cardType == 'byCategory':
-            data = await incident_service.get_incidents_by_category(startDate, endDate)
+            data = await incident_service.get_incidents_by_category(startDate, endDate, function_filter)
         
         elif cardType == 'byStatus':
-            data = await incident_service.get_incidents_by_status_distribution(startDate, endDate)
+            data = await incident_service.get_incidents_by_status_distribution(startDate, endDate, function_filter)
         
         elif cardType == 'monthlyTrend':
-            data = await incident_service.get_incidents_monthly_trend(startDate, endDate)
+            data = await incident_service.get_incidents_monthly_trend(startDate, endDate, function_filter)
        
         elif cardType == 'incidentsTimeSeries':
-            data = await incident_service.get_incidents_time_series(startDate, endDate)
+            data = await incident_service.get_incidents_time_series(startDate, endDate, function_filter)
         
         elif cardType == 'topFinancialImpacts':
-            data = await incident_service.get_incidents_top_financial_impacts(startDate, endDate)
+            data = await incident_service.get_incidents_top_financial_impacts(startDate, endDate, function_filter)
        
        
         elif cardType == 'incidentsByEventType':
-            data = await incident_service.get_incidents_by_event_type(startDate, endDate)
+            data = await incident_service.get_incidents_by_event_type(startDate, endDate, function_filter)
        
        
         elif cardType == 'incidentsByFinancialImpact':
-            data = await incident_service.get_incidents_by_financial_impact(startDate, endDate)
+            data = await incident_service.get_incidents_by_financial_impact(startDate, endDate, function_filter)
         
         elif cardType == 'netLossAndRecovery':
-            data = await incident_service.get_incidents_net_loss_recovery(startDate, endDate)
+            data = await incident_service.get_incidents_net_loss_recovery(startDate, endDate, function_filter)
        
         #tables
         elif cardType == 'overallStatuses':
-            data = await incident_service.get_incidents_status_overview(startDate, endDate)
+            data = await incident_service.get_incidents_status_overview(startDate, endDate, function_filter)
         elif cardType == 'incidentsFinancialDetails':
-            data = await incident_service.get_incidents_financial_details(startDate, endDate)
+            data = await incident_service.get_incidents_financial_details(startDate, endDate, function_filter)
         elif cardType == 'incidentsWithTimeframe':
-            data = await incident_service.get_incidents_with_timeframe(startDate, endDate)
+            data = await incident_service.get_incidents_with_timeframe(startDate, endDate, function_filter)
         elif cardType == 'incidentsWithFinancialAndFunction':
-            data = await incident_service.get_incidents_with_financial_and_function(startDate, endDate)
+            data = await incident_service.get_incidents_with_financial_and_function(startDate, endDate, function_filter)
         
         # Operational Loss Metrics - Cards
         elif cardType == 'atmTheftCount':
-            data = await incident_service.get_atm_theft_incidents(startDate, endDate)
+            data = await incident_service.get_atm_theft_incidents(startDate, endDate, function_filter)
         elif cardType == 'avgRecognitionTime':
-            data = await incident_service.get_incidents_with_recognition_time(startDate, endDate)
+            data = await incident_service.get_incidents_with_recognition_time(startDate, endDate, function_filter)
         elif cardType == 'internalFraudCount':
-            data = await incident_service.get_internal_fraud_incidents(startDate, endDate)
+            data = await incident_service.get_internal_fraud_incidents(startDate, endDate, function_filter)
         elif cardType == 'externalFraudCount':
-            data = await incident_service.get_external_fraud_incidents(startDate, endDate)
+            data = await incident_service.get_external_fraud_incidents(startDate, endDate, function_filter)
         elif cardType == 'physicalAssetDamageCount':
-            data = await incident_service.get_physical_asset_damage_incidents(startDate, endDate)
+            data = await incident_service.get_physical_asset_damage_incidents(startDate, endDate, function_filter)
         elif cardType == 'peopleErrorCount':
-            data = await incident_service.get_people_error_incidents(startDate, endDate)
+            data = await incident_service.get_people_error_incidents(startDate, endDate, function_filter)
         elif cardType == 'internalFraudLoss':
-            data = await incident_service.get_internal_fraud_incidents(startDate, endDate)
+            data = await incident_service.get_internal_fraud_incidents(startDate, endDate, function_filter)
         elif cardType == 'externalFraudLoss':
-            data = await incident_service.get_external_fraud_incidents(startDate, endDate)
+            data = await incident_service.get_external_fraud_incidents(startDate, endDate, function_filter)
         elif cardType == 'physicalAssetLoss':
-            data = await incident_service.get_physical_asset_damage_incidents(startDate, endDate)
+            data = await incident_service.get_physical_asset_damage_incidents(startDate, endDate, function_filter)
         elif cardType == 'peopleErrorLoss':
-            data = await incident_service.get_people_error_incidents(startDate, endDate)
+            data = await incident_service.get_people_error_incidents(startDate, endDate, function_filter)
         
         # Operational Loss Metrics - Charts
         elif cardType == 'operationalLossValue':
-            data = await incident_service.get_operational_loss_value_monthly(startDate, endDate)
+            data = await incident_service.get_operational_loss_value_monthly(startDate, endDate, function_filter)
         elif cardType == 'monthlyTrendByType':
-            data = await incident_service.get_monthly_trend_by_incident_type(startDate, endDate)
+            data = await incident_service.get_monthly_trend_by_incident_type(startDate, endDate, function_filter)
         
         # Operational Loss Metrics - Tables
         elif cardType == 'lossByRiskCategory':
-            data = await incident_service.get_loss_by_risk_category(startDate, endDate)
+            data = await incident_service.get_loss_by_risk_category(startDate, endDate, function_filter)
         elif cardType == 'comprehensiveOperationalLoss':
-            data = await incident_service.get_comprehensive_operational_loss(startDate, endDate)
+            data = await incident_service.get_comprehensive_operational_loss(startDate, endDate, function_filter)
           
         """
         elif cardType == 'createdDeletedIncidentsPerQuarter':
@@ -273,11 +291,28 @@ async def export_incidents_excel(
     onlyChart: str = Query("False"),
     chartType: str = Query(None),
     onlyOverallTable: str = Query("False"),
-    tableType: str = Query(None)
+    tableType: str = Query(None),
+    functionId: str = Query(None, description="Filter by specific function ID")
 ):
     """Export incidents report in Excel format (service-backed like controls)."""
    
     try:
+        # Get user function access for filtering
+        user = getattr(request.state, 'user', None)
+        write_debug(f"[INCIDENTS EXCEL] Raw user from request.state: {user}")
+        user_id = user.get('id') if user else None
+        group_name = user.get('groupName') if user else None
+        
+        # If no user info, treat as super admin (no filter) for now
+        if not user_id:
+            access = UserFunctionAccess(is_super_admin=True)
+            function_filter = ""
+            write_debug(f"[INCIDENTS EXCEL] No user found, treating as super admin (no filter)")
+        else:
+            access = user_function_access_service.get_user_function_access(user_id, group_name)
+            function_filter = user_function_access_service.build_incident_function_filter('i', access, functionId)
+        write_debug(f"[INCIDENTS EXCEL] User {user_id}, group {group_name}, is_super_admin={access.is_super_admin}, function_ids={access.function_ids}, function_filter: {function_filter}")
+        
         write_debug(f"Exporting incidents report in Excel format for {startDate} to {endDate}")
         write_debug(f"cardType: {cardType}")
         write_debug(f"onlyCard: {onlyCard}")
@@ -333,89 +368,90 @@ async def export_incidents_excel(
 
         data = None
         
+        # All service calls with function filtering
         if cardType == 'totalIncidents':
-            data = await incident_service.get_incidents_list(startDate, endDate)
+            data = await incident_service.get_incidents_list(startDate, endDate, function_filter)
         elif cardType == 'pendingPreparer':
-            write_debug(f"[INCIDENTS PDF] fetching pending preparer incidents for {startDate} to {endDate}")
-            data = await incident_service.get_incidents_by_status('pendingPreparer', startDate, endDate)
+            write_debug(f"[INCIDENTS EXCEL] fetching pending preparer incidents for {startDate} to {endDate}")
+            data = await incident_service.get_incidents_by_status('pendingPreparer', startDate, endDate, function_filter)
         elif cardType == 'pendingChecker':
-            data = await incident_service.get_incidents_by_status('pendingChecker', startDate, endDate)
+            data = await incident_service.get_incidents_by_status('pendingChecker', startDate, endDate, function_filter)
         elif cardType == 'pendingReviewer':
-            data = await incident_service.get_incidents_by_status('pendingReviewer', startDate, endDate)
+            data = await incident_service.get_incidents_by_status('pendingReviewer', startDate, endDate, function_filter)
         elif cardType == 'pendingAcceptance':
-            data = await incident_service.get_incidents_by_status('pendingAcceptance', startDate, endDate)
+            data = await incident_service.get_incidents_by_status('pendingAcceptance', startDate, endDate, function_filter)
             
       
         # Charts
         elif cardType == 'byCategory':
-            data = await incident_service.get_incidents_by_category(startDate, endDate)
+            data = await incident_service.get_incidents_by_category(startDate, endDate, function_filter)
         elif cardType == 'byStatus':
-            data = await incident_service.get_incidents_by_status_distribution(startDate, endDate)
+            data = await incident_service.get_incidents_by_status_distribution(startDate, endDate, function_filter)
         elif cardType == 'monthlyTrend':
-            data = await incident_service.get_incidents_monthly_trend(startDate, endDate)
+            data = await incident_service.get_incidents_monthly_trend(startDate, endDate, function_filter)
         elif cardType == 'incidentsTimeSeries':
-            data = await incident_service.get_incidents_time_series(startDate, endDate)
+            data = await incident_service.get_incidents_time_series(startDate, endDate, function_filter)
         elif cardType == 'topFinancialImpacts':
-            data = await incident_service.get_incidents_top_financial_impacts(startDate, endDate)
+            data = await incident_service.get_incidents_top_financial_impacts(startDate, endDate, function_filter)
         
         elif cardType == 'incidentsByEventType':
-            data = await incident_service.get_incidents_by_event_type(startDate, endDate)
+            data = await incident_service.get_incidents_by_event_type(startDate, endDate, function_filter)
         elif cardType == 'incidentsByFinancialImpact':
-            data = await incident_service.get_incidents_by_financial_impact(startDate, endDate)
+            data = await incident_service.get_incidents_by_financial_impact(startDate, endDate, function_filter)
         elif cardType == 'netLossAndRecovery':
-            data = await incident_service.get_incidents_net_loss_recovery(startDate, endDate)
+            data = await incident_service.get_incidents_net_loss_recovery(startDate, endDate, function_filter)
         # Pending buckets and totals/list
       
         #tables
         elif cardType == 'overallStatuses':
-            data = await incident_service.get_incidents_status_overview(startDate, endDate)
+            data = await incident_service.get_incidents_status_overview(startDate, endDate, function_filter)
         elif cardType == 'incidentsFinancialDetails':
-            data = await incident_service.get_incidents_financial_details(startDate, endDate)
+            data = await incident_service.get_incidents_financial_details(startDate, endDate, function_filter)
         elif cardType == 'incidentsWithTimeframe':
-            data = await incident_service.get_incidents_with_timeframe(startDate, endDate)
+            data = await incident_service.get_incidents_with_timeframe(startDate, endDate, function_filter)
         elif cardType == 'incidentsWithFinancialAndFunction':
-            data = await incident_service.get_incidents_with_financial_and_function(startDate, endDate)
+            data = await incident_service.get_incidents_with_financial_and_function(startDate, endDate, function_filter)
         
         # Operational Loss Metrics - Cards
         elif cardType == 'atmTheftCount':
-            data = await incident_service.get_atm_theft_incidents(startDate, endDate)
+            data = await incident_service.get_atm_theft_incidents(startDate, endDate, function_filter)
         elif cardType == 'avgRecognitionTime':
-            data = await incident_service.get_incidents_with_recognition_time(startDate, endDate)
+            data = await incident_service.get_incidents_with_recognition_time(startDate, endDate, function_filter)
         elif cardType == 'internalFraudCount':
-            data = await incident_service.get_internal_fraud_incidents(startDate, endDate)
+            data = await incident_service.get_internal_fraud_incidents(startDate, endDate, function_filter)
         elif cardType == 'externalFraudCount':
-            data = await incident_service.get_external_fraud_incidents(startDate, endDate)
+            data = await incident_service.get_external_fraud_incidents(startDate, endDate, function_filter)
         elif cardType == 'physicalAssetDamageCount':
-            data = await incident_service.get_physical_asset_damage_incidents(startDate, endDate)
+            data = await incident_service.get_physical_asset_damage_incidents(startDate, endDate, function_filter)
         elif cardType == 'peopleErrorCount':
-            data = await incident_service.get_people_error_incidents(startDate, endDate)
+            data = await incident_service.get_people_error_incidents(startDate, endDate, function_filter)
         elif cardType == 'internalFraudLoss':
-            data = await incident_service.get_internal_fraud_incidents(startDate, endDate)
+            data = await incident_service.get_internal_fraud_incidents(startDate, endDate, function_filter)
         elif cardType == 'externalFraudLoss':
-            data = await incident_service.get_external_fraud_incidents(startDate, endDate)
+            data = await incident_service.get_external_fraud_incidents(startDate, endDate, function_filter)
         elif cardType == 'physicalAssetLoss':
-            data = await incident_service.get_physical_asset_damage_incidents(startDate, endDate)
+            data = await incident_service.get_physical_asset_damage_incidents(startDate, endDate, function_filter)
         elif cardType == 'peopleErrorLoss':
-            data = await incident_service.get_people_error_incidents(startDate, endDate)
+            data = await incident_service.get_people_error_incidents(startDate, endDate, function_filter)
         
         # Operational Loss Metrics - Charts
         elif cardType == 'operationalLossValue':
-            data = await incident_service.get_operational_loss_value_monthly(startDate, endDate)
+            data = await incident_service.get_operational_loss_value_monthly(startDate, endDate, function_filter)
         elif cardType == 'monthlyTrendByType':
-            data = await incident_service.get_monthly_trend_by_incident_type(startDate, endDate)
+            data = await incident_service.get_monthly_trend_by_incident_type(startDate, endDate, function_filter)
         
         # Operational Loss Metrics - Tables
         elif cardType == 'lossByRiskCategory':
-            data = await incident_service.get_loss_by_risk_category(startDate, endDate)
+            data = await incident_service.get_loss_by_risk_category(startDate, endDate, function_filter)
         elif cardType == 'comprehensiveOperationalLoss':
-            data = await incident_service.get_comprehensive_operational_loss(startDate, endDate)
+            data = await incident_service.get_comprehensive_operational_loss(startDate, endDate, function_filter)
 
        
         elif cardType == 'incidentsReduced':
-            data = await incident_service.get_incidents_reduced(startDate, endDate)
+            data = await incident_service.get_incidents_reduced(startDate, endDate, function_filter)
         elif cardType == 'newIncidents':
-            write_debug(f"[INCIDENTS PDF] fetching new incidents for {startDate} to {endDate}")
-            data = await incident_service.get_new_incidents(startDate, endDate)
+            write_debug(f"[INCIDENTS EXCEL] fetching new incidents for {startDate} to {endDate}")
+            data = await incident_service.get_new_incidents(startDate, endDate, function_filter)
 
 
         

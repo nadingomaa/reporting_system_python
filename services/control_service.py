@@ -84,7 +84,7 @@ class ControlService:
             write_debug(f"Offending query: {query}")
             return []
     
-    async def get_total_controls(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_total_controls(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get total controls data"""
         date_filter = ""
         if start_date and end_date:
@@ -106,7 +106,7 @@ class ControlService:
         return await self.execute_query(query)
 
    
-    async def get_pending_controls(self, role: str, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_pending_controls(self, role: str, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get pending controls for a given role: preparer/checker/reviewer/acceptance (using standardized sequential approval logic)"""
         date_filter = ""
         if start_date and end_date:
@@ -145,7 +145,7 @@ class ControlService:
         write_debug(f"SQL Query: {query}")
         return await self.execute_query(query)
     
-    async def get_unmapped_icofr_controls(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_unmapped_icofr_controls(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get unmapped ICOFR controls data for export"""
         date_filter = ""
         if start_date and end_date:
@@ -170,7 +170,7 @@ class ControlService:
         """
         return await self.execute_query(query)
     
-    async def get_tests_pending_controls(self, status_type: str, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_tests_pending_controls(self, status_type: str, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get controls with pending test status (using ControlDesignTests table like Node.js frontend)"""
         date_filter = ""
         if start_date and end_date:
@@ -222,7 +222,7 @@ class ControlService:
         """
         return await self.execute_query(query)
 
-    async def get_unmapped_controls(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_unmapped_controls(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get unmapped controls based on Node.js config logic"""
         date_filter = ""
         if start_date and end_date:
@@ -247,7 +247,7 @@ class ControlService:
         """
         return await self.execute_query(query)
 
-    async def get_unmapped_non_icofr_controls(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_unmapped_non_icofr_controls(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get unmapped Non-ICOFR controls data for export"""
         date_filter = ""
         if start_date and end_date:
@@ -273,7 +273,7 @@ class ControlService:
         """
         return await self.execute_query(query)
    
-    async def get_controls_by_department(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_controls_by_department(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get controls grouped by function (many-to-many relationship via ControlFunctions table)"""
         write_debug(f"Fetching controls by function - start_date: {start_date}, end_date: {end_date}")
         
@@ -308,7 +308,7 @@ class ControlService:
         write_debug(f"Query result: {result} (count: {len(result)})")
         return result
     
-    async def get_controls_by_risk_response(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_controls_by_risk_response(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get controls grouped by risk response"""
         write_debug(f"Fetching controls by risk response - start_date: {start_date}, end_date: {end_date}")
         
@@ -338,7 +338,7 @@ class ControlService:
         write_debug(f"Query result: {result} (count: {len(result)})")
         return result
     
-    async def get_quarterly_control_creation_trend(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_quarterly_control_creation_trend(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get controls created by quarter"""
         write_debug(f"Fetching quarterly control creation trend - start_date: {start_date}, end_date: {end_date}")
         
@@ -368,7 +368,7 @@ class ControlService:
         write_debug(f"Query result: {result} (count: {len(result)})")
         return result
     
-    async def get_controls_by_type(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_controls_by_type(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get controls grouped by type"""
         write_debug(f"Fetching controls by type - start_date: {start_date}, end_date: {end_date}")
         
@@ -401,7 +401,7 @@ class ControlService:
         write_debug(f"Query result: {result} (count: {len(result)})")
         return result
     
-    async def get_anti_fraud_distribution(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_anti_fraud_distribution(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get controls by anti-fraud distribution"""
         write_debug(f"Fetching anti-fraud distribution - start_date: {start_date}, end_date: {end_date}")
         
@@ -435,7 +435,7 @@ class ControlService:
         write_debug(f"Query result: {result} (count: {len(result)})")
         return result
     
-    async def get_controls_per_level(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_controls_per_level(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get controls per control level"""
         write_debug(f"Fetching controls per level - start_date: {start_date}, end_date: {end_date}")
         
@@ -468,7 +468,7 @@ class ControlService:
         write_debug(f"Query result: {result} (count: {len(result)})")
         return result
     
-    async def get_control_execution_frequency(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_control_execution_frequency(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get controls by execution frequency"""
         write_debug(f"Fetching control execution frequency - start_date: {start_date}, end_date: {end_date}")
         
@@ -508,7 +508,7 @@ class ControlService:
         write_debug(f"Query result: {result} (count: {len(result)})")
         return result
     
-    async def get_number_of_controls_by_icofr_status(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_number_of_controls_by_icofr_status(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get number of controls by ICOFR status"""
         write_debug(f"Fetching controls by ICOFR status - start_date: {start_date}, end_date: {end_date}")
         
@@ -553,7 +553,7 @@ class ControlService:
         write_debug(f"Query result: {result} (count: {len(result)})")
         return result
     
-    async def get_number_of_focus_points_per_principle(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_number_of_focus_points_per_principle(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get number of focus points per principle"""
         write_debug(f"Fetching focus points per principle - start_date: {start_date}, end_date: {end_date}")
         
@@ -585,7 +585,7 @@ class ControlService:
         write_debug(f"Query result: {result} (count: {len(result)})")
         return result
     
-    async def get_number_of_focus_points_per_component(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_number_of_focus_points_per_component(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get number of focus points per component"""
         write_debug(f"Fetching focus points per component - start_date: {start_date}, end_date: {end_date}")
         
@@ -619,7 +619,7 @@ class ControlService:
         write_debug(f"Query result: {result} (count: {len(result)})")
         return result
     
-    async def get_action_plans_status(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_action_plans_status(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get action plans status"""
         write_debug(f"Fetching action plans status - start_date: {start_date}, end_date: {end_date}")
         
@@ -656,7 +656,7 @@ class ControlService:
         write_debug(f"Query result: {result} (count: {len(result)})")
         return result
     
-    async def get_number_of_controls_per_component(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_number_of_controls_per_component(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get number of controls per component"""
         write_debug(f"Fetching controls per component - start_date: {start_date}, end_date: {end_date}")
         
@@ -699,7 +699,7 @@ class ControlService:
         return result
 
     
-    async def get_status_overview(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_status_overview(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Status overview table matching Node config (controls with statuses)."""
         date_filter = ""
         if start_date and end_date:
@@ -725,7 +725,7 @@ class ControlService:
         write_debug(f"SQL Query: {query}")
         return await self.execute_query(query)
 
-    async def get_controls_by_function(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_controls_by_function(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         date_filter = ""
         if start_date and end_date:
             date_filter = f"AND c.createdAt BETWEEN '{start_date}' AND '{end_date}'"
@@ -749,7 +749,7 @@ class ControlService:
         write_debug(f"SQL Query: {query}")
         return await self.execute_query(query)
 
-    async def get_controls_testing_approval_cycle(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_controls_testing_approval_cycle(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         date_filter = ""
         if start_date and end_date:
             date_filter = f"AND c.createdAt BETWEEN '{start_date}' AND '{end_date}'"
@@ -786,7 +786,7 @@ class ControlService:
         write_debug(f"SQL Query: {query}")
         return await self.execute_query(query)
     
-    async def get_key_non_key_controls_per_department(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_key_non_key_controls_per_department(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         date_filter = ""
         if start_date and end_date:
             date_filter = f"AND c.createdAt BETWEEN '{start_date}' AND '{end_date}'"
@@ -810,7 +810,7 @@ class ControlService:
         write_debug(f"SQL Query: {query}")
         return await self.execute_query(query)
 
-    async def get_key_non_key_controls_per_process(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_key_non_key_controls_per_process(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         date_filter = ""
         if start_date and end_date:
             date_filter = f"AND c.createdAt BETWEEN '{start_date}' AND '{end_date}'"
@@ -846,7 +846,7 @@ class ControlService:
         write_debug(f"SQL Query: {query}")
         return await self.execute_query(query)
     
-    async def get_key_non_key_controls_per_business_unit(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_key_non_key_controls_per_business_unit(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         date_filter = ""
         if start_date and end_date:
             date_filter = f"AND c.createdAt BETWEEN '{start_date}' AND '{end_date}'"
@@ -871,7 +871,7 @@ class ControlService:
         write_debug(f"SQL Query: {query}")
         return await self.execute_query(query)
 
-    async def get_control_count_by_assertion_name(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_control_count_by_assertion_name(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         date_filter = ""
         if start_date and end_date:
             date_filter = f"AND c.createdAt BETWEEN '{start_date}' AND '{end_date}'"
@@ -894,7 +894,7 @@ class ControlService:
         write_debug(f"SQL Query: {query}")
         return await self.execute_query(query)
     
-    async def get_icofr_control_coverage_by_coso(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_icofr_control_coverage_by_coso(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         date_filter = ""
         if start_date and end_date:
             date_filter = f"AND c.createdAt BETWEEN '{start_date}' AND '{end_date}'"
@@ -968,7 +968,7 @@ class ControlService:
             write_debug(f"Query result (minimal): {len(res)} rows for actionPlanForAdequacy")
         return res
 
-    async def get_controls_not_mapped_to_principles(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_controls_not_mapped_to_principles(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Controls not mapped to any Principles (match Node SQL)."""
         date_filter = ""
         if start_date and end_date:
@@ -992,7 +992,7 @@ class ControlService:
         write_debug(f"SQL Query: {query}")
         return await self.execute_query(query)
     
-    async def get_controls_not_mapped_to_assertions(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_controls_not_mapped_to_assertions(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Controls not mapped to any Assertions (ICOFR account) - matches Node SQL."""
         date_filter = ""
         if start_date and end_date:
@@ -1015,7 +1015,7 @@ class ControlService:
         write_debug(f"SQL Query: {query}")
         return await self.execute_query(query)
 
-    async def get_action_plan_for_adequacy(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_action_plan_for_adequacy(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         write_debug(f"Fetching actionPlanForAdequacy for {start_date} to {end_date}")
         date_filter = ""
         if start_date and end_date:
@@ -1052,7 +1052,7 @@ class ControlService:
         write_debug(f"Query result: {len(res)} rows for actionPlanForAdequacy")
         return res
 
-    async def get_action_plan_for_effectiveness(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_action_plan_for_effectiveness(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         date_filter = ""
         if start_date and end_date:
             date_filter = f"AND ap.createdAt BETWEEN '{start_date}' AND '{end_date}'"
@@ -1087,7 +1087,7 @@ class ControlService:
         write_debug(f"SQL Query: {q}")
         return await self.execute_query(q)
 
-    async def get_control_submission_status_by_quarter_function(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_control_submission_status_by_quarter_function(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         date_filter = ""
         if start_date and end_date:
             date_filter = f"AND c.createdAt BETWEEN '{start_date}' AND '{end_date}'"
@@ -1119,7 +1119,7 @@ class ControlService:
         write_debug(f"SQL Query: {q}")
         return await self.execute_query(q)
 
-    async def get_functions_with_fully_tested_control_tests(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_functions_with_fully_tested_control_tests(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         date_filter = ""
         if start_date and end_date:
             date_filter = f"AND c.createdAt BETWEEN '{start_date}' AND '{end_date}'"

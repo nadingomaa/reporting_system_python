@@ -18,6 +18,7 @@ DashboardActivityService = None  # type: ignore
 from utils.export_utils import get_default_header_config
 from models import ExportRequest, ExportResponse
 from routes.route_utils import write_debug, parse_header_config, merge_header_config, convert_to_boolean, save_and_log_export
+from services.user_function_access_service import user_function_access_service, UserFunctionAccess
 
 # Initialize services
 api_service = APIService()
@@ -47,10 +48,20 @@ async def export_risks_pdf(
     onlyChart: str = Query("False"),
     chartType: str = Query(None),
     onlyOverallTable: str = Query("False"),
-    tableType: str = Query(None)
+    tableType: str = Query(None),
+    functionId: str = Query(None, description="Filter by specific function ID")
 ):  
     """Export risks report in PDF format (service-backed like controls)."""
     try:
+        # Get user function access for filtering
+        user = getattr(request.state, 'user', None)
+        user_id = user.get('id') if user else None
+        group_name = user.get('groupName') if user else None
+        
+        access = user_function_access_service.get_user_function_access(user_id, group_name) if user_id else UserFunctionAccess(is_super_admin=True)
+        function_filter = user_function_access_service.build_risk_function_filter('r', access, functionId)
+        write_debug(f"[RISKS PDF] User {user_id}, group {group_name}, function_filter: {function_filter}")
+        
         write_debug(f"[RISKS PDF] startDate={startDate} endDate={endDate}")
         write_debug(f"[RISKS PDF] cardType={cardType} onlyCard={onlyCard} onlyChart={onlyChart}")
         write_debug(f"[RISKS PDF] chartType={chartType} onlyOverallTable={onlyOverallTable} tableType={tableType}")
@@ -99,56 +110,56 @@ async def export_risks_pdf(
 
         write_debug(f"[RISKS PDF] normalized cardType={cardType}")
 
-        # Fetch data via risk_service
+        # Fetch data via risk_service with function filtering
         if not risk_service:
             raise HTTPException(status_code=500, detail="Risk service not available")
 
         data = None
         # Metrics
         if cardType == 'total':
-            data = await risk_service.get_total_risks(startDate, endDate)
+            data = await risk_service.get_total_risks(startDate, endDate, function_filter)
         elif cardType == 'high':
-            data = await risk_service.get_high_risks(startDate, endDate)
+            data = await risk_service.get_high_risks(startDate, endDate, function_filter)
         elif cardType == 'medium':
             write_debug(f"[RISKS PDF] fetching medium risks for {startDate} to {endDate}")
-            data = await risk_service.get_medium_risks(startDate, endDate)
+            data = await risk_service.get_medium_risks(startDate, endDate, function_filter)
             write_debug(f"[RISKS PDF] medium risks data: {data}")
         elif cardType == 'low':
-            data = await risk_service.get_low_risks(startDate, endDate)
+            data = await risk_service.get_low_risks(startDate, endDate, function_filter)
         elif cardType == 'risksReduced':
-            data = await risk_service.get_risks_reduced(startDate, endDate)
+            data = await risk_service.get_risks_reduced(startDate, endDate, function_filter)
         elif cardType == 'newRisks':
             write_debug(f"[RISKS PDF] fetching new risks for {startDate} to {endDate}")
-            data = await risk_service.get_new_risks(startDate, endDate)
+            data = await risk_service.get_new_risks(startDate, endDate, function_filter)
 
         # Charts
         elif cardType == 'risksByCategory':
-            data = await risk_service.get_risks_by_category(startDate, endDate)
+            data = await risk_service.get_risks_by_category(startDate, endDate, function_filter)
         elif cardType == 'risksByEventType':
-            data = await risk_service.get_risks_by_event_type_chart(startDate, endDate)
+            data = await risk_service.get_risks_by_event_type_chart(startDate, endDate, function_filter)
         elif cardType == 'createdDeletedRisksPerQuarter':
-            data = await risk_service.get_created_deleted_risks_per_quarter(startDate, endDate)
+            data = await risk_service.get_created_deleted_risks_per_quarter(startDate, endDate, function_filter)
         elif cardType == 'quarterlyRiskCreationTrends':
-            data = await risk_service.get_quarterly_risk_creation_trends(startDate, endDate)
+            data = await risk_service.get_quarterly_risk_creation_trends(startDate, endDate, function_filter)
         elif cardType == 'riskApprovalStatusDistribution':
-            data = await risk_service.get_risk_approval_status_distribution(startDate, endDate)
+            data = await risk_service.get_risk_approval_status_distribution(startDate, endDate, function_filter)
         elif cardType == 'riskDistributionByFinancialImpact':
-            data = await risk_service.get_risk_distribution_by_financial_impact(startDate, endDate)
+            data = await risk_service.get_risk_distribution_by_financial_impact(startDate, endDate, function_filter)
         # Tables
         elif cardType == 'risksPerDepartment':
-            data = await risk_service.get_risks_per_department(startDate, endDate)
+            data = await risk_service.get_risks_per_department(startDate, endDate, function_filter)
         elif cardType == 'risksPerBusinessProcess':
-            data = await risk_service.get_risks_per_business_process(startDate, endDate)
+            data = await risk_service.get_risks_per_business_process(startDate, endDate, function_filter)
         elif cardType == 'inherentResidualRiskComparison':
-            data = await risk_service.get_inherent_residual_risk_comparison(startDate, endDate)
+            data = await risk_service.get_inherent_residual_risk_comparison(startDate, endDate, function_filter)
         elif cardType == 'highResidualRiskOverview':
-            data = await risk_service.get_high_residual_risk_overview(startDate, endDate)
+            data = await risk_service.get_high_residual_risk_overview(startDate, endDate, function_filter)
         elif cardType == 'risksAndControlsCount':
-            data = await risk_service.get_risks_and_controls_count(startDate, endDate)
+            data = await risk_service.get_risks_and_controls_count(startDate, endDate, function_filter)
         elif cardType == 'controlsAndRiskCount':
-            data = await risk_service.get_controls_and_risk_count(startDate, endDate)
+            data = await risk_service.get_controls_and_risk_count(startDate, endDate, function_filter)
         elif cardType == 'allRisks':
-            data = await risk_service.get_risks_details(startDate, endDate)
+            data = await risk_service.get_risks_details(startDate, endDate, function_filter)
 
         risks_data = {cardType: data}
         write_debug(f"risks_data: {risks_data}")
@@ -207,11 +218,21 @@ async def export_risks_excel(
     onlyChart: str = Query("False"),
     chartType: str = Query(None),
     onlyOverallTable: str = Query("False"),
-    tableType: str = Query(None)
+    tableType: str = Query(None),
+    functionId: str = Query(None, description="Filter by specific function ID")
 ):
     """Export risks report in Excel format (service-backed like controls)."""
    
     try:
+        # Get user function access for filtering
+        user = getattr(request.state, 'user', None)
+        user_id = user.get('id') if user else None
+        group_name = user.get('groupName') if user else None
+        
+        access = user_function_access_service.get_user_function_access(user_id, group_name) if user_id else UserFunctionAccess(is_super_admin=True)
+        function_filter = user_function_access_service.build_risk_function_filter('r', access, functionId)
+        write_debug(f"[RISKS EXCEL] User {user_id}, group {group_name}, function_filter: {function_filter}")
+        
         write_debug(f"Exporting risks report in Excel format for {startDate} to {endDate}")
         write_debug(f"cardType: {cardType}")
         write_debug(f"onlyCard: {onlyCard}")
@@ -266,47 +287,47 @@ async def export_risks_excel(
             raise HTTPException(status_code=500, detail="Risk service not available")
 
         data = None
-        # Metrics (counts) or lists when onlyCard is requested
+        # Metrics (counts) or lists when onlyCard is requested - with function filtering
         if cardType == 'total':
-            data = await risk_service.get_total_risks(startDate, endDate)
+            data = await risk_service.get_total_risks(startDate, endDate, function_filter)
         elif cardType == 'high':
-            data = await risk_service.get_high_risks(startDate, endDate)
+            data = await risk_service.get_high_risks(startDate, endDate, function_filter)
         elif cardType == 'medium':
-            data = await risk_service.get_medium_risks(startDate, endDate)
+            data = await risk_service.get_medium_risks(startDate, endDate, function_filter)
         elif cardType == 'low':
-            data = await risk_service.get_low_risks(startDate, endDate)
+            data = await risk_service.get_low_risks(startDate, endDate, function_filter)
         elif cardType == 'risksReduced':
-            data = await risk_service.get_risks_reduced(startDate, endDate)
+            data = await risk_service.get_risks_reduced(startDate, endDate, function_filter)
         elif cardType == 'newRisks':
-            data = await risk_service.get_new_risks(startDate, endDate)
+            data = await risk_service.get_new_risks(startDate, endDate, function_filter)
         # Charts
         elif cardType == 'risksByCategory':
-            data = await risk_service.get_risks_by_category(startDate, endDate)
+            data = await risk_service.get_risks_by_category(startDate, endDate, function_filter)
         elif cardType == 'risksByEventType':
-            data = await risk_service.get_risks_by_event_type_chart(startDate, endDate)
+            data = await risk_service.get_risks_by_event_type_chart(startDate, endDate, function_filter)
         elif cardType == 'createdDeletedRisksPerQuarter':
-            data = await risk_service.get_created_deleted_risks_per_quarter(startDate, endDate)
+            data = await risk_service.get_created_deleted_risks_per_quarter(startDate, endDate, function_filter)
         elif cardType == 'quarterlyRiskCreationTrends':
-            data = await risk_service.get_quarterly_risk_creation_trends(startDate, endDate)
+            data = await risk_service.get_quarterly_risk_creation_trends(startDate, endDate, function_filter)
         elif cardType == 'riskApprovalStatusDistribution':
-            data = await risk_service.get_risk_approval_status_distribution(startDate, endDate)
+            data = await risk_service.get_risk_approval_status_distribution(startDate, endDate, function_filter)
         elif cardType == 'riskDistributionByFinancialImpact':
-            data = await risk_service.get_risk_distribution_by_financial_impact(startDate, endDate)
+            data = await risk_service.get_risk_distribution_by_financial_impact(startDate, endDate, function_filter)
         # Tables
         elif cardType == 'risksPerDepartment':
-            data = await risk_service.get_risks_per_department(startDate, endDate)
+            data = await risk_service.get_risks_per_department(startDate, endDate, function_filter)
         elif cardType == 'risksPerBusinessProcess':
-            data = await risk_service.get_risks_per_business_process(startDate, endDate)
+            data = await risk_service.get_risks_per_business_process(startDate, endDate, function_filter)
         elif cardType == 'inherentResidualRiskComparison':
-            data = await risk_service.get_inherent_residual_risk_comparison(startDate, endDate)
+            data = await risk_service.get_inherent_residual_risk_comparison(startDate, endDate, function_filter)
         elif cardType == 'highResidualRiskOverview':
-            data = await risk_service.get_high_residual_risk_overview(startDate, endDate)
+            data = await risk_service.get_high_residual_risk_overview(startDate, endDate, function_filter)
         elif cardType == 'risksAndControlsCount':
-            data = await risk_service.get_risks_and_controls_count(startDate, endDate)
+            data = await risk_service.get_risks_and_controls_count(startDate, endDate, function_filter)
         elif cardType == 'controlsAndRiskCount':
-            data = await risk_service.get_controls_and_risk_count(startDate, endDate)
+            data = await risk_service.get_controls_and_risk_count(startDate, endDate, function_filter)
         elif cardType == 'allRisks':
-            data = await risk_service.get_risks_details(startDate, endDate)
+            data = await risk_service.get_risks_details(startDate, endDate, function_filter)
 
         risks_data = {cardType: data}
         write_debug(f"risks_data: {risks_data}")

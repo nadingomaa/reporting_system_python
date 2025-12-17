@@ -86,7 +86,7 @@ class RiskService:
                 pass
             return []
 
-    async def get_risks_by_category(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_risks_by_category(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get risks grouped by category"""
         date_filter = ""
         if start_date and end_date:
@@ -111,7 +111,7 @@ class RiskService:
         
         return await self.execute_query(query)
     
-    async def get_risks_by_event_type(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_risks_by_event_type(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get risks grouped by event type"""
         date_filter = ""
         if start_date and end_date:
@@ -135,7 +135,7 @@ class RiskService:
         
         return await self.execute_query(query)
 
-    async def get_risks_list_by_inherent_level(self, level: str, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_risks_list_by_inherent_level(self, level: str, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get list of risks filtered by inherent_value level (e.g., 'High', 'Medium', 'Low')."""
         date_filter = ""
         if start_date and end_date:
@@ -159,7 +159,7 @@ class RiskService:
         """
         return await self.execute_query(query)
 
-    async def get_all_risks_list(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_all_risks_list(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get list of all risks (filtered by date if provided)."""
         date_filter = ""
         if start_date and end_date:
@@ -184,7 +184,7 @@ class RiskService:
         return await self.execute_query(query)
 
     # Dashboard-specific methods based on dashboard-config.service.ts
-    async def get_total_risks(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_total_risks(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get total risks count"""
         date_filter = ""
         if start_date and end_date:
@@ -203,7 +203,7 @@ class RiskService:
         
         return await self.execute_query(query)
 
-    async def get_high_risks(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_high_risks(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get high risks count"""
         date_filter = ""
         if start_date and end_date:
@@ -222,7 +222,7 @@ class RiskService:
         
         return await self.execute_query(query)
 
-    async def get_medium_risks(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_medium_risks(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get medium risks count"""
         date_filter = ""
         if start_date and end_date:
@@ -241,7 +241,7 @@ class RiskService:
         
         return await self.execute_query(query)
 
-    async def get_low_risks(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_low_risks(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get low risks count"""
         date_filter = ""
         if start_date and end_date:
@@ -300,7 +300,7 @@ class RiskService:
         return await self.execute_query(query, params)
 
 
-    async def get_new_risks(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_new_risks(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get new risks this month count"""
         date_filter = ""
         if start_date and end_date:
@@ -327,7 +327,7 @@ class RiskService:
             pass
         return result
 
-    async def get_risks_by_category(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_risks_by_category(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get risks grouped by category"""
         date_filter = ""
         if start_date and end_date:
@@ -351,7 +351,7 @@ class RiskService:
         
         return await self.execute_query(query)
 
-    async def get_risks_by_event_type_chart(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_risks_by_event_type_chart(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get risks by event type for charts"""
         date_filter = ""
         if start_date and end_date:
@@ -374,7 +374,7 @@ class RiskService:
         
         return await self.execute_query(query)
 
-    async def get_created_deleted_risks_per_quarter(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_created_deleted_risks_per_quarter(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get created and deleted risks per quarter"""
         date_filter = ""
         if start_date and end_date:
@@ -417,7 +417,7 @@ class RiskService:
         write_debug(query)
         return await self.execute_query(query)
 
-    async def get_quarterly_risk_creation_trends(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_quarterly_risk_creation_trends(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get quarterly risk creation trends"""
         date_filter = ""
         if start_date and end_date:
@@ -445,7 +445,7 @@ class RiskService:
         
         return await self.execute_query(query)
 
-    async def get_risk_approval_status_distribution(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_risk_approval_status_distribution(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get risk approval status distribution"""
         date_filter = ""
         if start_date and end_date:
@@ -475,7 +475,7 @@ class RiskService:
         
         return await self.execute_query(query)
 
-    async def get_risk_distribution_by_financial_impact(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_risk_distribution_by_financial_impact(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get risk distribution by financial impact level"""
         date_filter = ""
         if start_date and end_date:
@@ -509,7 +509,7 @@ class RiskService:
         return await self.execute_query(query)
 
     # Table data methods
-    async def get_risks_per_department(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_risks_per_department(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get total number of risks per department"""
         date_filter = ""
         if start_date and end_date:
@@ -533,7 +533,7 @@ class RiskService:
         
         return await self.execute_query(query)
 
-    async def get_risks_per_business_process(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_risks_per_business_process(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get number of risks per business process"""
         date_filter = ""
         if start_date and end_date:
@@ -557,7 +557,7 @@ class RiskService:
         
         return await self.execute_query(query)
 
-    async def get_inherent_residual_risk_comparison(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_inherent_residual_risk_comparison(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get inherent risk & residual risk comparison"""
         date_filter = ""
         if start_date and end_date:
@@ -582,7 +582,7 @@ class RiskService:
         
         return await self.execute_query(query)
 
-    async def get_high_residual_risk_overview(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_high_residual_risk_overview(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get high residual risk overview"""
         date_filter = ""
         if start_date and end_date:
@@ -659,7 +659,7 @@ class RiskService:
         
         return await self.execute_query(query)
 
-    async def get_risks_and_controls_count(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_risks_and_controls_count(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get risks and their controls count"""
         date_filter = ""
         if start_date and end_date:
@@ -683,7 +683,7 @@ class RiskService:
         
         return await self.execute_query(query)
 
-    async def get_controls_and_risk_count(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_controls_and_risk_count(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get controls and risk count"""
         date_filter = ""
         if start_date and end_date:
@@ -707,7 +707,7 @@ class RiskService:
         
         return await self.execute_query(query)
 
-    async def get_risks_details(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_risks_details(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Get all risks details - matches frontend allRisks table structure"""
         date_filter = ""
         if start_date and end_date:

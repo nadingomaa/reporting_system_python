@@ -71,7 +71,7 @@ class IncidentService:
 
        # ===== Incidents fallbacks =====
   
-    async def get_incidents_list(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_incidents_list(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return incidents detailed list (basic fields)"""
         date_filter = ""
         if start_date and end_date:
@@ -83,17 +83,17 @@ class IncidentService:
 
         query = f"""
         SELECT 
-            code,
-            title,
-            FORMAT(CONVERT(datetime, createdAt), 'yyyy-MM-dd HH:mm:ss') as createdAt
-        FROM Incidents
-        WHERE isDeleted = 0 AND deletedAt IS NULL {date_filter}
-        ORDER BY createdAt DESC
+            i.code,
+            i.title,
+            FORMAT(CONVERT(datetime, i.createdAt), 'yyyy-MM-dd HH:mm:ss') as createdAt
+        FROM Incidents i
+        WHERE i.isDeleted = 0 AND i.deletedAt IS NULL {date_filter} {function_filter}
+        ORDER BY i.createdAt DESC
         """
         write_debug(f"[INCIDENTS LIST] query: {query}")
         return await self.execute_query(query)
 
-    async def get_incidents_status_overview(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_incidents_status_overview(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return incidents status overview list with computed status (matches Node.js statusOverview)"""
         date_filter = ""
         if start_date and end_date:
@@ -120,11 +120,12 @@ class IncidentService:
         WHERE i.isDeleted = 0 
           AND i.deletedAt IS NULL
           {date_filter}
+          {function_filter}
         ORDER BY i.createdAt DESC
         """
         return await self.execute_query(query)
 
-    async def get_incidents_by_status(self, status: str, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_incidents_by_status(self, status: str, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return incidents rows filtered by computed status label (not counts)."""
         date_filter = ""
         if start_date and end_date:
@@ -155,7 +156,7 @@ class IncidentService:
                 END AS status,
                 FORMAT(CONVERT(datetime, i.createdAt), 'yyyy-MM-dd HH:mm:ss') as createdAt
             FROM Incidents i
-            WHERE i.isDeleted = 0 AND i.deletedAt IS NULL {date_filter}
+            WHERE i.isDeleted = 0 AND i.deletedAt IS NULL {date_filter} {function_filter}
         )
         SELECT *
         FROM IncidentStatus
@@ -167,7 +168,7 @@ class IncidentService:
         return await self.execute_query(query)
 
    
-    async def get_incidents_by_category(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_incidents_by_category(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
        
         write_debug(f"[INCIDENTS BY CATEGORY] fetching incidents by category for {start_date} to {end_date}")
         """Return incidents count by category (excludes NULL and deleted categories)"""
@@ -190,13 +191,14 @@ class IncidentService:
         WHERE i.isDeleted = 0 
             AND i.deletedAt IS NULL
             {date_filter}
+            {function_filter}
         GROUP BY ISNULL(c.name, 'Unknown')
         ORDER BY COUNT(i.id) DESC
         """
         write_debug(f"[INCIDENTS BY CATEGORY] query: {query}")
         return await self.execute_query(query)
 
-    async def get_incidents_by_status_distribution(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_incidents_by_status_distribution(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return incidents count by status (distribution for charts)"""
         date_filter = ""
         if start_date and end_date:
@@ -219,7 +221,7 @@ class IncidentService:
                     ELSE 'Other'
                 END AS status
             FROM Incidents i
-            WHERE i.isDeleted = 0 AND i.deletedAt IS NULL {date_filter}
+            WHERE i.isDeleted = 0 AND i.deletedAt IS NULL {date_filter} {function_filter}
         ),
         StatusCounts AS (
             SELECT 
@@ -245,7 +247,7 @@ class IncidentService:
         """
         return await self.execute_query(query)
  
-    async def get_incidents_monthly_trend(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_incidents_monthly_trend(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return incidents monthly trend counts grouped by occurrence_date"""
         date_filter = ""
         if start_date and end_date:
@@ -263,13 +265,14 @@ class IncidentService:
         WHERE i.isDeleted = 0 
             AND i.deletedAt IS NULL
             {date_filter}
+            {function_filter}
             AND i.createdAt IS NOT NULL
         GROUP BY FORMAT(i.createdAt, 'MMM yyyy')
         ORDER BY MIN(i.createdAt)
         """
         return await self.execute_query(query)
     
-    async def get_incidents_time_series(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_incidents_time_series(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return incidents time series by month (matches grc-incidents.service.ts)"""
         date_filter = ""
         if start_date and end_date:
@@ -317,7 +320,7 @@ class IncidentService:
    
    
    
-    async def get_incidents_top_financial_impacts(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_incidents_top_financial_impacts(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return top financial impacts grouped by category with total net loss"""
         date_filter = ""
         if start_date and end_date:
@@ -345,7 +348,7 @@ class IncidentService:
         """
         return await self.execute_query(query)
     
-    async def get_incidents_net_loss_recovery(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_incidents_net_loss_recovery(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return net loss and recovery data for incidents"""
         date_filter = ""
         if start_date and end_date:
@@ -370,7 +373,7 @@ class IncidentService:
         return await self.execute_query(query)
 
    
-    async def get_incidents_by_event_type(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_incidents_by_event_type(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return incidents count by event type (excludes NULL and deleted event types)"""
         date_filter = ""
         if start_date and end_date:
@@ -396,7 +399,7 @@ class IncidentService:
         """
         return await self.execute_query(query)
 
-    async def get_incidents_by_financial_impact(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_incidents_by_financial_impact(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return incidents count by financial impact (excludes NULL and deleted financial impacts)"""
         date_filter = ""
         if start_date and end_date:
@@ -423,7 +426,7 @@ class IncidentService:
         return await self.execute_query(query)
 
     
-    async def get_new_incidents_by_month(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_new_incidents_by_month(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return new incidents count per month (matches grc-incidents.service.ts)"""
         date_filter = ""
         if start_date and end_date:
@@ -458,7 +461,7 @@ class IncidentService:
         """
         return await self.execute_query(query)
 
-    async def get_incidents_with_timeframe(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_incidents_with_timeframe(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return incidents with timeframe values (matches grc-incidents.service.ts)"""
         date_filter = ""
         if start_date and end_date:
@@ -480,7 +483,7 @@ class IncidentService:
         """
         return await self.execute_query(query)
 
-    async def get_incidents_financial_details(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_incidents_financial_details(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return incidents financial details with net loss, recovery, and gross amount (matches Node.js)"""
         date_filter = ""
         if start_date and end_date:
@@ -519,7 +522,7 @@ class IncidentService:
 
     # ===== Operational Loss Metrics =====
     
-    async def get_atm_theft_incidents(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_atm_theft_incidents(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return ATM theft incidents (last 12 months)"""
         date_filter = "AND COALESCE(i.occurrence_date, i.createdAt) >= DATEADD(MONTH, -12, GETDATE())"
         if start_date and end_date:
@@ -547,7 +550,7 @@ class IncidentService:
         """
         return await self.execute_query(query)
 
-    async def get_internal_fraud_incidents(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_internal_fraud_incidents(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return internal fraud incidents (last 12 months)"""
         date_filter = "AND COALESCE(i.occurrence_date, i.createdAt) >= DATEADD(MONTH, -12, GETDATE())"
         if start_date and end_date:
@@ -575,7 +578,7 @@ class IncidentService:
         """
         return await self.execute_query(query)
 
-    async def get_external_fraud_incidents(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_external_fraud_incidents(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return external fraud incidents (last 12 months)"""
         date_filter = "AND COALESCE(i.occurrence_date, i.createdAt) >= DATEADD(MONTH, -12, GETDATE())"
         if start_date and end_date:
@@ -603,7 +606,7 @@ class IncidentService:
         """
         return await self.execute_query(query)
 
-    async def get_physical_asset_damage_incidents(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_physical_asset_damage_incidents(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return physical asset damage incidents (last 12 months)"""
         date_filter = "AND COALESCE(i.occurrence_date, i.createdAt) >= DATEADD(MONTH, -12, GETDATE())"
         if start_date and end_date:
@@ -631,7 +634,7 @@ class IncidentService:
         """
         return await self.execute_query(query)
 
-    async def get_people_error_incidents(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_people_error_incidents(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return people error incidents (last 12 months)"""
         date_filter = "AND COALESCE(i.occurrence_date, i.createdAt) >= DATEADD(MONTH, -12, GETDATE())"
         if start_date and end_date:
@@ -659,7 +662,7 @@ class IncidentService:
         """
         return await self.execute_query(query)
 
-    async def get_incidents_with_recognition_time(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_incidents_with_recognition_time(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return incidents with recognition time calculation (last 12 months)"""
         date_filter = "AND i.occurrence_date >= DATEADD(MONTH, -12, GETDATE())"
         if start_date and end_date:
@@ -688,7 +691,7 @@ class IncidentService:
         """
         return await self.execute_query(query)
 
-    async def get_operational_loss_value_monthly(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_operational_loss_value_monthly(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return operational loss value by month (last 12 months)"""
         date_filter = "AND i.occurrence_date >= DATEADD(MONTH, -12, GETDATE())"
         if start_date and end_date:
@@ -714,7 +717,7 @@ class IncidentService:
         """
         return await self.execute_query(query)
 
-    async def get_monthly_trend_by_incident_type(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_monthly_trend_by_incident_type(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return monthly trend analysis by incident type (last 12 months)"""
         date_filter = "AND COALESCE(i.occurrence_date, i.createdAt) >= DATEADD(MONTH, -12, GETDATE())"
         if start_date and end_date:
@@ -759,7 +762,7 @@ class IncidentService:
             for row in result
         ]
 
-    async def get_loss_by_risk_category(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_loss_by_risk_category(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return loss analysis by risk category (last 12 months)"""
         date_filter = "AND COALESCE(i.occurrence_date, i.createdAt) >= DATEADD(MONTH, -12, GETDATE())"
         if start_date and end_date:
@@ -787,7 +790,7 @@ class IncidentService:
         """
         return await self.execute_query(query)
 
-    async def get_comprehensive_operational_loss(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_comprehensive_operational_loss(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return comprehensive operational loss dashboard metrics (last 12 months)"""
         date_filter = "COALESCE(i.occurrence_date, i.createdAt) >= DATEADD(MONTH, -12, GETDATE())"
         if start_date and end_date:
@@ -879,7 +882,7 @@ class IncidentService:
         """
         return await self.execute_query(query)
 
-    async def get_incidents_with_financial_and_function(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_incidents_with_financial_and_function(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return incidents with financial impact and function details (matches grc-incidents.service.ts)"""
         date_filter = ""
         if start_date and end_date:
@@ -907,9 +910,54 @@ class IncidentService:
         """
         return await self.execute_query(query)
 
-    # ===== Operational Loss Metrics =====
+    async def get_incidents_reduced(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
+        """Return reduced incidents count"""
+        date_filter = ""
+        if start_date and end_date:
+            date_filter = f"AND i.createdAt BETWEEN '{start_date}' AND '{end_date}'"
+        elif start_date:
+            date_filter = f"AND i.createdAt >= '{start_date}'"
+        elif end_date:
+            date_filter = f"AND i.createdAt <= '{end_date}'"
+
+        query = f"""
+        SELECT COUNT(*) as count
+        FROM Incidents i
+        WHERE i.isDeleted = 0 
+            AND i.deletedAt IS NULL
+            AND i.acceptanceStatus = 'approved'
+            {date_filter}
+            {function_filter}
+        """
+        return await self.execute_query(query)
+
+    async def get_new_incidents(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
+        """Return new incidents list"""
+        date_filter = ""
+        if start_date and end_date:
+            date_filter = f"AND i.createdAt BETWEEN '{start_date}' AND '{end_date}'"
+        elif start_date:
+            date_filter = f"AND i.createdAt >= '{start_date}'"
+        elif end_date:
+            date_filter = f"AND i.createdAt <= '{end_date}'"
+
+        query = f"""
+        SELECT 
+            i.code,
+            i.title,
+            FORMAT(CONVERT(datetime, i.createdAt), 'yyyy-MM-dd HH:mm:ss') as createdAt
+        FROM Incidents i
+        WHERE i.isDeleted = 0 
+            AND i.deletedAt IS NULL
+            {date_filter}
+            {function_filter}
+        ORDER BY i.createdAt DESC
+        """
+        return await self.execute_query(query)
+
+    # ===== Operational Loss Metrics (Second Set) =====
     
-    async def get_atm_theft_incidents(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_atm_theft_incidents_v2(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return ATM theft incidents (last 12 months)"""
         date_filter = "AND COALESCE(i.occurrence_date, i.createdAt) >= DATEADD(MONTH, -12, GETDATE())"
         if start_date and end_date:
@@ -937,7 +985,7 @@ class IncidentService:
         """
         return await self.execute_query(query)
 
-    async def get_internal_fraud_incidents(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_internal_fraud_incidents(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return internal fraud incidents (last 12 months)"""
         date_filter = "AND COALESCE(i.occurrence_date, i.createdAt) >= DATEADD(MONTH, -12, GETDATE())"
         if start_date and end_date:
@@ -965,7 +1013,7 @@ class IncidentService:
         """
         return await self.execute_query(query)
 
-    async def get_external_fraud_incidents(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_external_fraud_incidents(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return external fraud incidents (last 12 months)"""
         date_filter = "AND COALESCE(i.occurrence_date, i.createdAt) >= DATEADD(MONTH, -12, GETDATE())"
         if start_date and end_date:
@@ -993,7 +1041,7 @@ class IncidentService:
         """
         return await self.execute_query(query)
 
-    async def get_physical_asset_damage_incidents(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_physical_asset_damage_incidents(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return physical asset damage incidents (last 12 months)"""
         date_filter = "AND COALESCE(i.occurrence_date, i.createdAt) >= DATEADD(MONTH, -12, GETDATE())"
         if start_date and end_date:
@@ -1021,7 +1069,7 @@ class IncidentService:
         """
         return await self.execute_query(query)
 
-    async def get_people_error_incidents(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_people_error_incidents(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return people error incidents (last 12 months)"""
         date_filter = "AND COALESCE(i.occurrence_date, i.createdAt) >= DATEADD(MONTH, -12, GETDATE())"
         if start_date and end_date:
@@ -1049,7 +1097,7 @@ class IncidentService:
         """
         return await self.execute_query(query)
 
-    async def get_incidents_with_recognition_time(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_incidents_with_recognition_time(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return incidents with recognition time calculation (last 12 months)"""
         date_filter = "AND i.occurrence_date >= DATEADD(MONTH, -12, GETDATE())"
         if start_date and end_date:
@@ -1078,7 +1126,7 @@ class IncidentService:
         """
         return await self.execute_query(query)
 
-    async def get_operational_loss_value_monthly(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_operational_loss_value_monthly(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return operational loss value by month (last 12 months)"""
         date_filter = "AND i.occurrence_date >= DATEADD(MONTH, -12, GETDATE())"
         if start_date and end_date:
@@ -1104,7 +1152,7 @@ class IncidentService:
         """
         return await self.execute_query(query)
 
-    async def get_monthly_trend_by_incident_type(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_monthly_trend_by_incident_type(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return monthly trend analysis by incident type (last 12 months)"""
         date_filter = "AND COALESCE(i.occurrence_date, i.createdAt) >= DATEADD(MONTH, -12, GETDATE())"
         if start_date and end_date:
@@ -1149,7 +1197,7 @@ class IncidentService:
             for row in result
         ]
 
-    async def get_loss_by_risk_category(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_loss_by_risk_category(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return loss analysis by risk category (last 12 months)"""
         date_filter = "AND COALESCE(i.occurrence_date, i.createdAt) >= DATEADD(MONTH, -12, GETDATE())"
         if start_date and end_date:
@@ -1177,7 +1225,7 @@ class IncidentService:
         """
         return await self.execute_query(query)
 
-    async def get_comprehensive_operational_loss(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_comprehensive_operational_loss(self, start_date: Optional[str] = None, end_date: Optional[str] = None, function_filter: str = "") -> List[Dict[str, Any]]:
         """Return comprehensive operational loss dashboard metrics (last 12 months)"""
         date_filter = "COALESCE(i.occurrence_date, i.createdAt) >= DATEADD(MONTH, -12, GETDATE())"
         if start_date and end_date:

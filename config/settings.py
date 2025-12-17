@@ -96,3 +96,18 @@ def get_database_connection_string() -> str:
 def get_default_header_config(dashboard_type: str) -> Dict[str, Any]:
     """Get default header configuration for a dashboard type"""
     return DEFAULT_HEADER_CONFIGS.get(dashboard_type, DEFAULT_HEADER_CONFIGS['risks']).copy()
+
+
+def test_database_connection():
+    """Test database connection and return status"""
+    import pyodbc
+    try:
+        conn_str = get_database_connection_string()
+        conn = pyodbc.connect(conn_str, timeout=10)
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1")
+        cursor.close()
+        conn.close()
+        return True, "Connection successful", {"server": DATABASE_CONFIG['server'], "database": DATABASE_CONFIG['database']}
+    except Exception as e:
+        return False, str(e), {"server": DATABASE_CONFIG['server'], "database": DATABASE_CONFIG['database']}
