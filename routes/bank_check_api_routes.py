@@ -594,64 +594,96 @@ async def get_database_tables():
         connection_string = get_database_connection_string()
         print(f"[EnhancedBankCheck] Connecting to SQL Server with: {connection_string[:50]}...")
         
-        # Connect to SQL Server database
-        conn = pyodbc.connect(connection_string)
+        # Connect to SQL Server database with timeout
+        import time
+        start_time = time.time()
+        conn = pyodbc.connect(connection_string, timeout=30)  # 30 second connection timeout
         cursor = conn.cursor()
         
         try:
-            # Get all tables from the database
+            print(f"[EnhancedBankCheck] Connection established in {time.time() - start_time:.2f}s")
+            query_start = time.time()
+            
+            # Optimized: Get all tables and columns in a single query using JOIN
+            # This is much faster than querying columns for each table separately
             tables_query = """
                 SELECT 
-                    TABLE_SCHEMA,
-                    TABLE_NAME,
-                    TABLE_TYPE
-                FROM INFORMATION_SCHEMA.TABLES 
-                WHERE TABLE_TYPE = 'BASE TABLE'
-                ORDER BY TABLE_SCHEMA, TABLE_NAME;
+                    t.TABLE_SCHEMA,
+                    t.TABLE_NAME,
+                    t.TABLE_TYPE,
+                    c.COLUMN_NAME,
+                    c.ORDINAL_POSITION
+                FROM INFORMATION_SCHEMA.TABLES t
+                LEFT JOIN INFORMATION_SCHEMA.COLUMNS c 
+                    ON t.TABLE_SCHEMA = c.TABLE_SCHEMA 
+                    AND t.TABLE_NAME = c.TABLE_NAME
+                WHERE t.TABLE_TYPE = 'BASE TABLE'
+                ORDER BY t.TABLE_SCHEMA, t.TABLE_NAME, c.ORDINAL_POSITION;
             """
             
+            print(f"[EnhancedBankCheck] Executing optimized tables query...")
             cursor.execute(tables_query)
-            tables_result = cursor.fetchall()
+            query_time = time.time() - query_start
+            print(f"[EnhancedBankCheck] Query executed in {query_time:.2f}s, fetching results...")
             
+            results = cursor.fetchall()
+            fetch_time = time.time() - query_start
+            print(f"[EnhancedBankCheck] Fetched {len(results)} rows in {fetch_time:.2f}s")
+            
+            # Group columns by table
+            process_start = time.time()
+            tables_dict = {}
+            for row in results:
+                schema_name = row[0]
+                table_name = row[1]
+                table_type = row[2]
+                column_name = row[3] if len(row) > 3 else None
+                
+                table_key = f"{schema_name}.{table_name}"
+                if table_key not in tables_dict:
+                    full_table_name = f"{schema_name}.{table_name}" if schema_name != 'dbo' else table_name
+                    tables_dict[table_key] = {
+                        "id": f"{schema_name}_{table_name}",
+                        "name": table_name,
+                        "schema": schema_name,
+                        "full_name": full_table_name,
+                        "fields": [],
+                        "columns": [],
+                        "field_count": 0
+                    }
+                
+                # Add column if it exists
+                if column_name:
+                    tables_dict[table_key]["fields"].append(column_name)
+                    tables_dict[table_key]["columns"].append(column_name)
+            
+            # Convert dict to list and set field_count
             tables = []
-            for table in tables_result:  # Get ALL tables from database
-                table_name = table[1]  # TABLE_NAME
-                schema_name = table[0]  # TABLE_SCHEMA
-                full_table_name = f"{schema_name}.{table_name}" if schema_name != 'dbo' else table_name
-                
-                # Get columns for each table
-                columns_query = """
-                    SELECT 
-                        COLUMN_NAME,
-                        DATA_TYPE,
-                        IS_NULLABLE,
-                        COLUMN_DEFAULT
-                    FROM INFORMATION_SCHEMA.COLUMNS 
-                    WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
-                    ORDER BY ORDINAL_POSITION;
-                """
-                
-                cursor.execute(columns_query, schema_name, table_name)
-                columns_result = cursor.fetchall()
-                column_names = [col[0] for col in columns_result]  # COLUMN_NAME
-                
-                tables.append({
-                    "id": f"{schema_name}_{table_name}",
-                    "name": table_name,
-                    "schema": schema_name,
-                    "full_name": full_table_name,
-                    "fields": column_names,
-                    "columns": column_names,  # Add columns for frontend compatibility
-                    "field_count": len(column_names)
-                })
+            for table_key, table_data in tables_dict.items():
+                table_data["field_count"] = len(table_data["columns"])
+                tables.append(table_data)
+            
+            process_time = time.time() - process_start
+            total_time = time.time() - start_time
+            print(f"[EnhancedBankCheck] Processed {len(tables)} tables in {process_time:.2f}s (total: {total_time:.2f}s)")
             
             print(f"[EnhancedBankCheck] Found {len(tables)} tables in SQL Server database")
+            print(f"[EnhancedBankCheck] Returning tables response with {len(tables)} tables")
             
-            return {
+            response = {
                 "success": True,
                 "tables": tables,
                 "count": len(tables)
             }
+            
+            # Log first few table names for debugging
+            if tables:
+                print(f"[EnhancedBankCheck] Sample table names: {[t.get('name') for t in tables[:5]]}")
+                print(f"[EnhancedBankCheck] First table structure: {tables[0]}")
+            
+            print(f"[EnhancedBankCheck] Response structure - success: {response.get('success')}, tables count: {len(response.get('tables', []))}, count field: {response.get('count')}")
+            
+            return response
             
         finally:
             cursor.close()

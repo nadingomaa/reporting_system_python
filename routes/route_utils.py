@@ -909,11 +909,34 @@ def generate_excel_report(columns, data_rows, header_config=None):
                     ax.set_xlabel('Controls Count')
                     ax.set_ylabel('Component')
                 elif chart_type == 'pie':
-                    ax.pie(chart_data['values'], labels=chart_data['labels'], autopct='%1.1f%%')
+                    # Limit pie chart to top N items for readability (default 20)
+                    max_pie_items = 20
+                    labels_list = chart_data['labels']
+                    values_list = chart_data['values']
+                    
+                    if len(labels_list) > max_pie_items:
+                        # Sort by value and take top N
+                        combined = list(zip(values_list, labels_list))
+                        combined.sort(reverse=True)
+                        top_values, top_labels = zip(*combined[:max_pie_items])
+                        # Sum remaining values into "Others"
+                        others_sum = sum(v for v, _ in combined[max_pie_items:])
+                        if others_sum > 0:
+                            top_values = list(top_values) + [others_sum]
+                            top_labels = list(top_labels) + [f'Others ({len(labels_list) - max_pie_items} more)']
+                        ax.pie(top_values, labels=top_labels, autopct='%1.1f%%', startangle=90)
+                        write_debug(f"Pie chart limited to top {max_pie_items} items + Others (total: {len(labels_list)})")
+                    else:
+                        ax.pie(values_list, labels=labels_list, autopct='%1.1f%%', startangle=90)
                 elif chart_type == 'line':
-                    ax.plot(chart_data['labels'], chart_data['values'], marker='o')
-                    ax.set_xlabel('Labels')
-                    ax.set_ylabel('Values')
+                    # Line chart over categorical x-axis
+                    x = list(range(len(chart_data['labels'])))
+                    ax.plot(x, chart_data['values'], marker='o', color='#4472C4')
+                    ax.set_xticks(x)
+                    ax.set_xticklabels(chart_data['labels'], rotation=45, ha='right')
+                    ax.set_ylabel('Value')
+                    ax.set_xlabel('Category')
+                    ax.grid(True, linestyle='--', alpha=0.3)
                 
                 ax.set_title(title if title else 'Chart')
             
@@ -1296,6 +1319,130 @@ def generate_word_report(columns, data_rows, header_config=None):
         
         # Add spacing
         doc.add_paragraph()
+    
+    # Generate chart if chart_data is provided (before table)
+    chart_data = header_config.get('chart_data')
+    chart_type = header_config.get('chart_type', 'bar')
+    is_stacked = chart_data and chart_data.get('series') and chart_data.get('labels')
+    is_simple = chart_data and chart_data.get('labels') and chart_data.get('values')
+    
+    if is_stacked or is_simple:
+        try:
+            import matplotlib
+            matplotlib.use('Agg')
+            import matplotlib.pyplot as plt
+            from docx.shared import Inches
+            
+            # Add spacing before chart
+            doc.add_paragraph()
+            
+            # Create chart
+            fig, ax = plt.subplots(figsize=(8, 5))
+            
+            if is_stacked:
+                # Stacked bar chart
+                raw_labels = chart_data.get('labels') or []
+                labels = [str(x) for x in raw_labels]
+                series_list = chart_data.get('series') or []
+                
+                if series_list and labels:
+                    import numpy as np
+                    # Prepare data for stacking
+                    x = np.arange(len(labels))
+                    width = 0.6
+                    colors_list = ['#4472C4', '#ED7D31', '#A5A5A5', '#FFC000', '#5B9BD5', '#70AD47']
+                    bottom = np.zeros(len(labels))
+                    
+                    for idx, series in enumerate(series_list):
+                        values = [float(v) for v in (series.get('values') or [])]
+                        series_name = series.get('name', f'Series {idx+1}')
+                        color = colors_list[idx % len(colors_list)]
+                        
+                        # Ensure values match labels length
+                        if len(values) < len(labels):
+                            values.extend([0] * (len(labels) - len(values)))
+                        values = values[:len(labels)]
+                        
+                        ax.bar(x, values, width, label=series_name, bottom=bottom, color=color)
+                        bottom += np.array(values)
+                    
+                    ax.set_xlabel('Period')
+                    ax.set_ylabel('Count')
+                    chart_title = title if title else (header_config.get('card_type') == 'monthlyTrendByType' and 'Monthly Trend Analysis by Incident Type' or 'Monthly Assessments (Stacked)')
+                    ax.set_title(chart_title)
+                    ax.set_xticks(x)
+                    ax.set_xticklabels(labels, rotation=45, ha='right')
+                    ax.legend()
+                    ax.set_ylim(bottom=0)
+            else:
+                # Simple chart
+                if chart_type == 'bar':
+                    ax.barh(chart_data['labels'], chart_data['values'], color='#4472C4')
+                    ax.set_xlabel('Controls Count')
+                    ax.set_ylabel('Component')
+                elif chart_type == 'pie':
+                    # Limit pie chart to top N items for readability (default 20)
+                    max_pie_items = 20
+                    labels_list = chart_data['labels']
+                    values_list = chart_data['values']
+                    
+                    if len(labels_list) > max_pie_items:
+                        # Sort by value and take top N
+                        combined = list(zip(values_list, labels_list))
+                        combined.sort(reverse=True)
+                        top_values, top_labels = zip(*combined[:max_pie_items])
+                        # Sum remaining values into "Others"
+                        others_sum = sum(v for v, _ in combined[max_pie_items:])
+                        if others_sum > 0:
+                            top_values = list(top_values) + [others_sum]
+                            top_labels = list(top_labels) + [f'Others ({len(labels_list) - max_pie_items} more)']
+                        ax.pie(top_values, labels=top_labels, autopct='%1.1f%%', startangle=90)
+                    else:
+                        ax.pie(values_list, labels=labels_list, autopct='%1.1f%%', startangle=90)
+                elif chart_type == 'line':
+                    # Line chart over categorical x-axis
+                    x = list(range(len(chart_data['labels'])))
+                    ax.plot(x, chart_data['values'], marker='o', color='#4472C4')
+                    ax.set_xticks(x)
+                    ax.set_xticklabels(chart_data['labels'], rotation=45, ha='right')
+                    ax.set_ylabel('Value')
+                    ax.set_xlabel('Category')
+                    ax.grid(True, linestyle='--', alpha=0.3)
+                elif chart_type == 'area':
+                    # Area chart
+                    x = list(range(len(chart_data['labels'])))
+                    ax.fill_between(x, chart_data['values'], alpha=0.5, color='#4472C4')
+                    ax.plot(x, chart_data['values'], marker='o', color='#4472C4')
+                    ax.set_xticks(x)
+                    ax.set_xticklabels(chart_data['labels'], rotation=45, ha='right')
+                    ax.set_ylabel('Value')
+                    ax.set_xlabel('Category')
+                    ax.grid(True, linestyle='--', alpha=0.3)
+            
+            chart_title = title if title else (header_config.get('chartConfig', {}).get('xKey', 'Chart') if header_config.get('chartConfig') else 'Chart')
+            ax.set_title(chart_title)
+            plt.tight_layout()
+            
+            # Save chart to buffer
+            chart_buffer = BytesIO()
+            plt.savefig(chart_buffer, format='png', dpi=150, bbox_inches='tight')
+            chart_buffer.seek(0)
+            plt.close()
+            
+            # Add chart to Word document
+            chart_para = doc.add_paragraph()
+            chart_para.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+            run = chart_para.add_run()
+            chart_buffer.seek(0)
+            run.add_picture(chart_buffer, width=Inches(6))
+            
+            # Add spacing after chart
+            doc.add_paragraph()
+        except Exception as e:
+            write_debug(f"Error generating Word chart: {str(e)}")
+            import traceback
+            write_debug(f"Word chart error traceback: {traceback.format_exc()}")
+            pass
     
     # Create table with configuration-based styling
     table = doc.add_table(rows=1, cols=len(columns))
@@ -2651,7 +2798,12 @@ def generate_pdf_report(columns, data_rows, header_config=None):
     # Generate chart if chart_data is provided
     chart_data = header_config.get('chart_data')
     chart_type = header_config.get('chart_type', 'bar')
+    write_debug(f"PDF chart check - chart_data present: {chart_data is not None}, chart_type: {chart_type}")
+    if chart_data:
+        write_debug(f"PDF chart check - has labels: {bool(chart_data.get('labels'))}, has values: {bool(chart_data.get('values'))}, labels count: {len(chart_data.get('labels', []))}, values count: {len(chart_data.get('values', []))}")
+    
     if chart_data and chart_data.get('labels') and chart_data.get('values'):
+        write_debug(f"PDF chart generation starting - type: {chart_type}")
         try:
             import matplotlib
             matplotlib.use('Agg')
@@ -2663,12 +2815,41 @@ def generate_pdf_report(columns, data_rows, header_config=None):
             
             if chart_type == 'bar':
                 ax.barh(chart_data['labels'], chart_data['values'], color='#4472C4')
-                ax.set_xlabel('Controls Count')
-                ax.set_ylabel('Component')
+                ax.set_xlabel('Count')
+                ax.set_ylabel('Category')
+                ax.set_xlim(left=0)
             elif chart_type == 'pie':
-                ax.pie(chart_data['values'], labels=chart_data['labels'], autopct='%1.1f%%')
+                # Limit pie chart to top N items for readability (default 20)
+                max_pie_items = 20
+                labels_list = chart_data['labels']
+                values_list = chart_data['values']
+                
+                if len(labels_list) > max_pie_items:
+                    # Sort by value and take top N
+                    combined = list(zip(values_list, labels_list))
+                    combined.sort(reverse=True)
+                    top_values, top_labels = zip(*combined[:max_pie_items])
+                    # Sum remaining values into "Others"
+                    others_sum = sum(v for v, _ in combined[max_pie_items:])
+                    if others_sum > 0:
+                        top_values = list(top_values) + [others_sum]
+                        top_labels = list(top_labels) + [f'Others ({len(labels_list) - max_pie_items} more)']
+                    ax.pie(top_values, labels=top_labels, autopct='%1.1f%%', startangle=90)
+                    write_debug(f"PDF pie chart limited to top {max_pie_items} items + Others (total: {len(labels_list)})")
+                else:
+                    ax.pie(values_list, labels=labels_list, autopct='%1.1f%%', startangle=90)
+            elif chart_type == 'line':
+                # Line chart over categorical x-axis
+                x = list(range(len(chart_data['labels'])))
+                ax.plot(x, chart_data['values'], marker='o', color='#4472C4')
+                ax.set_xticks(x)
+                ax.set_xticklabels(chart_data['labels'], rotation=45, ha='right')
+                ax.set_ylabel('Value')
+                ax.set_xlabel('Category')
+                ax.grid(True, linestyle='--', alpha=0.3)
             
-            ax.set_title(title if title else 'Chart')
+            chart_title = title if title else (header_config.get('chartConfig', {}).get('xKey', 'Chart') if header_config.get('chartConfig') else 'Chart')
+            ax.set_title(chart_title)
             plt.tight_layout()
             
             # Save chart to buffer
@@ -2682,8 +2863,11 @@ def generate_pdf_report(columns, data_rows, header_config=None):
             chart_img.hAlign = 'CENTER'
             story.append(chart_img)
             story.append(Spacer(1, 20))
+            write_debug(f"PDF chart added successfully - type: {chart_type}, labels: {len(chart_data.get('labels', []))}, values: {len(chart_data.get('values', []))}")
         except Exception as e:
-            print(f"Error generating chart: {e}")
+            write_debug(f"Error generating PDF chart: {str(e)}")
+            import traceback
+            write_debug(f"PDF chart error traceback: {traceback.format_exc()}")
             pass
     
     # Table data with Arabic text support and multi-line text handling
