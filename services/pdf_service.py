@@ -1048,3 +1048,319 @@ class PDFService:
             doc.build(content)
             buffer.seek(0)
             return buffer.getvalue()
+
+    async def generate_comply_pdf(self, comply_data: Dict[str, Any], startDate: str, endDate: str, header_config: Dict[str, Any], cardType: str = None, onlyCard: bool = False, onlyOverallTable: bool = False, onlyChart: bool = False) -> bytes:
+        """Generate comply PDF report - mirrors controls/risks PDF behavior"""
+        import re
+        write_debug("DEBUG: ===== generate_comply_pdf START =====")
+        try:
+            write_debug(f"  - cardType: {cardType}")
+            write_debug(f"  - onlyCard: {onlyCard}")
+            write_debug(f"  - onlyChart: {onlyChart}")
+            write_debug(f"  - onlyOverallTable: {onlyOverallTable}")
+
+            if not comply_data:
+                raise ValueError("No comply_data provided")
+
+            # Map frontend chart/card IDs to backend report names
+            report_name_map = {
+                # Chart IDs from frontend -> Backend report names
+                'surveysByStatus': 'Surveys by Status',
+                'complianceByStatus': 'Compliance per complianceStatus',
+                'complianceByProgress': 'Compliance per progressStatus',
+                'complianceByApproval': 'Compliance per approval_status',
+                'avgScorePerSurvey': 'Average Score Per Survey',
+                'complianceByControlCategory': 'Compliance by Control Category',
+                'topFailedControls': 'Top Failed Controls',
+                'controlsPerCategory': 'Controls no. per category',
+                'risksPerCategory': 'Risks no. per category',
+                'impactedAreasTrend': 'Impacted Areas Trend Over Time',
+                # Card IDs from frontend -> Backend report names
+                'totalSurveys': 'Surveys by Status',
+                'totalCompliance': 'Compliance Details',
+                'avgCompletionRate': 'Survey Completion Rate',
+                'complianceWithoutEvidence': 'Compliance controls without evidence',
+                # Table IDs from frontend -> Backend report names
+                'complianceDetails': 'Compliance Details',
+                'surveyCompletionRate': 'Survey Completion Rate',
+                'bankQuestionsDetails': 'Bank Questions details',
+                'risksPerCategoryDetails': 'Risks per category details',
+                'controlsPerCategoryDetails': 'Controls per category details',
+                'controlsPerDomainsDetails': 'Controls per domains Details',
+                'questionsPerCategory': 'Questions Per Category',
+                'impactedAreasByControls': 'Impacted Areas by Number of Linked Controls',
+                'surveyParticipationByDepartment': 'Survey Participation by Department',
+                'activeFunctions': 'Most Active vs Least Active Functions (Answer Count)',
+                'surveyCoverageByCategory': 'Survey Coverage by Category (How many categories included per survey)',
+                'complianceManagementDetails': 'Compliance managment details',
+                # Additional chart mappings
+                'questionsPerType': 'Questions no. per type',
+                'questionsPerReferences': 'Questions no. per References',
+                'controlNosPerDomains': 'Control Nos. per Domains',
+            }
+
+            # Get the actual report name from the map, or use cardType as-is
+            report_name = report_name_map.get(cardType, cardType)
+            
+            # Try to get data from comply_data
+            # First try cardType (route handler passes data with cardType as key)
+            data = comply_data.get(cardType, [])
+            
+            # If not found, try report name (in case full comply_data was passed)
+            if not data:
+                data = comply_data.get(report_name, [])
+            
+            # If still no data, try to find it by partial match
+            if not data and cardType:
+                for key in comply_data.keys():
+                    if isinstance(key, str) and cardType.lower() in key.lower():
+                        data = comply_data[key]
+                        report_name = key
+                        break
+
+            # Safety defaults
+            columns = []
+            data_rows = []
+
+            # CHART EXPORT
+            if onlyChart and cardType:
+                chart_data = {"labels": [], "values": []}
+
+                if isinstance(data, list) and data:
+                    first_item = data[0] if data else {}
+                    if isinstance(first_item, dict):
+                        keys = list(first_item.keys())
+                        
+                        # Handle multi-column charts (like monthlyTrendByType)
+                        if len(keys) >= 3 and any(k.lower() in ['period', 'month', 'date', 'name'] for k in keys):
+                            # Find label key and value keys
+                            label_key = None
+                            value_keys = []
+                            for key in keys:
+                                if key.lower() in ['period', 'name', 'month', 'date']:
+                                    label_key = key
+                                else:
+                                    value_keys.append(key)
+                            
+                            if label_key:
+                                def format_column_name(key):
+                                    return re.sub(r'[_]|([a-z])([A-Z])', r'\1 \2', str(key)).title()
+                                
+                                columns = [format_column_name(label_key)] + [format_column_name(k) for k in value_keys]
+                                
+                                labels = []
+                                series_list = []
+                                for item in data:
+                                    row = [str(item.get(label_key, "N/A"))]
+                                    labels.append(str(item.get(label_key, "N/A")))
+                                    for k in value_keys:
+                                        row.append(str(item.get(k, 0)))
+                                    data_rows.append(row)
+                                
+                                # Create series for stacked bar chart
+                                for value_key in value_keys:
+                                    series_values = [float(item.get(value_key, 0) or 0) for item in data]
+                                    series_list.append({
+                                        'name': format_column_name(value_key),
+                                        'values': series_values
+                                    })
+                                
+                                chart_data = {
+                                    "labels": labels,
+                                    "series": series_list
+                                }
+                                header_config["chart_type"] = "multiBar"
+                        elif len(keys) >= 2:
+                            # Standard 2-column chart
+                            # For compliance charts, intelligently detect label vs value keys
+                            label_key = None
+                            value_key = None
+                            
+                            # Known status/label keys (exact matches first, then partial)
+                            status_key_exact = ['complianceStatus', 'progressStatus', 'approval_status']
+                            status_key_partial = ['status', 'name', 'label', 'category', 'type']
+                            # Known value keys
+                            value_key_exact = ['Compliance', 'count', 'total', 'value']
+                            value_key_partial = ['amount', 'number', 'sum']
+                            
+                            # First pass: look for exact matches
+                            for key in keys:
+                                if key in status_key_exact:
+                                    label_key = key
+                                elif key in value_key_exact:
+                                    value_key = key
+                            
+                            # Second pass: look for partial matches if exact not found
+                            if label_key is None:
+                                for key in keys:
+                                    key_lower = key.lower()
+                                    if any(sk in key_lower for sk in status_key_partial):
+                                        label_key = key
+                                        break
+                            
+                            if value_key is None:
+                                for key in keys:
+                                    key_lower = key.lower()
+                                    if any(vk in key_lower for vk in value_key_partial) or key == 'Compliance':
+                                        value_key = key
+                                        break
+                            
+                            # Fallback: if still not found, use first as label, last as value
+                            # But prioritize 'Compliance' as value if it exists
+                            if value_key is None and 'Compliance' in keys:
+                                value_key = 'Compliance'
+                                label_key = [k for k in keys if k != 'Compliance'][0] if len(keys) > 1 else keys[0]
+                            
+                            if label_key is None:
+                                label_key = keys[0]
+                            if value_key is None:
+                                value_key = keys[-1]
+                            
+                            write_debug(f"Chart key detection - keys={keys}, label_key={label_key}, value_key={value_key}")
+                            
+                            def format_column_name(key):
+                                return re.sub(r'[_]|([a-z])([A-Z])', r'\1 \2', str(key)).title()
+                            
+                            label1 = format_column_name(label_key)
+                            label2 = format_column_name(value_key)
+                            columns = [label1, label2]
+                            
+                            for item in data:
+                                name = item.get(label_key, "N/A")
+                                value = item.get(value_key, 0)
+                                chart_data["labels"].append(name)
+                                chart_data["values"].append(value)
+                                data_rows.append([name, str(value)])
+                        else:
+                            key1 = keys[0]
+                            def format_column_name(key):
+                                return re.sub(r'[_]|([a-z])([A-Z])', r'\1 \2', str(key)).title()
+                            columns = [format_column_name(key1), "Value"]
+                            for item in data:
+                                name = item.get(key1, "N/A")
+                                chart_data["labels"].append(name)
+                                chart_data["values"].append(0)
+                                data_rows.append([name, 0])
+                    else:
+                        data_rows.append(["No data available", "0"])
+                        columns = ["Label", "Value"]
+                else:
+                    data_rows.append(["No data available", "0"])
+                    columns = ["Label", "Value"]
+                
+                # Decide chart type: header_config overrides mapping
+                chart_type_override = header_config.get("chartType") or header_config.get("chart_type")
+                
+                # Map cardType to default chart types
+                default_type_by_card = {
+                    "surveysByStatus": "pie",
+                    "complianceByStatus": "pie",
+                    "complianceByProgress": "pie",
+                    "complianceByApproval": "pie",
+                    "avgScorePerSurvey": "bar",
+                    "complianceByControlCategory": "bar",
+                    "topFailedControls": "bar",
+                    "controlsPerCategory": "bar",
+                    "risksPerCategory": "bar",
+                    "impactedAreasTrend": "line",
+                }
+
+                valid_types = {"bar", "line", "pie", "multiBar"}
+                if chart_type_override and chart_type_override in valid_types:
+                    resolved_chart_type = chart_type_override
+                else:
+                    resolved_chart_type = default_type_by_card.get(cardType, "bar")
+
+                header_config["chart_data"] = chart_data
+                header_config["chart_type"] = resolved_chart_type
+            
+            # TABLE EXPORT
+            elif onlyOverallTable and cardType:
+                write_debug(f"DEBUG: ===== onlyOverallTable START =====")
+                write_debug(f"  - data type: {type(data)}")
+                
+                if isinstance(data, list) and len(data) > 0:
+                    first_item = data[0]
+                    if isinstance(first_item, dict):
+                        raw_keys = list(first_item.keys())
+                        def nice(k: str) -> str:
+                            return re.sub(r'[_]|([a-z])([A-Z])', r'\1 \2', str(k)).title()
+                        columns = ['#'] + [nice(k) for k in raw_keys]
+                        data_rows = []
+                        for i, row in enumerate(data, 1):
+                            values = [str(row.get(k, '')) for k in raw_keys]
+                            data_rows.append([str(i)] + values)
+                    elif isinstance(first_item, (list, tuple)):
+                        num_cols = len(first_item)
+                        columns = ['#'] + [f'C{idx+1}' for idx in range(num_cols)]
+                        data_rows = []
+                        for i, row in enumerate(data, 1):
+                            vals = [str(v) for v in (row if isinstance(row, (list, tuple)) else [row])]
+                            data_rows.append([str(i)] + vals)
+                    else:
+                        columns = ['#', 'Value']
+                        data_rows = [[str(i+1), str(v)] for i, v in enumerate(data)]
+                else:
+                    columns = ['#', 'Value']
+                    data_rows = [['1', 'No data available']]
+
+            # CARD SUMMARY EXPORT
+            elif onlyCard and cardType:
+                write_debug(f"DEBUG: ===== onlyCard START =====")
+                write_debug(f"  - data: {data}")
+                write_debug(f"  - data type: {type(data)}")
+                
+                if isinstance(data, list) and data:
+                    first_item = data[0] if data else {}
+                    
+                    if isinstance(first_item, str):
+                        columns = ["#", "Item Name"]
+                        data_rows = []
+                        for i, item in enumerate(data, 1):
+                            data_rows.append([str(i), str(item)])
+                    elif isinstance(first_item, dict):
+                        raw_keys = list(first_item.keys())
+                        def nice(k: str) -> str:
+                            return re.sub(r'[_]|([a-z])([A-Z])', r'\1 \2', str(k)).title()
+                        columns = ['#'] + [nice(k) for k in raw_keys]
+                        data_rows = []
+                        for i, item in enumerate(data, 1):
+                            if isinstance(item, dict):
+                                values = [str(item.get(k, 'N/A')) for k in raw_keys]
+                                data_rows.append([str(i)] + values)
+                            elif isinstance(item, (list, tuple)):
+                                vals = [str(v) for v in item]
+                                data_rows.append([str(i)] + vals)
+                            else:
+                                data_rows.append([str(i), str(item)])
+                    else:
+                        columns = ['#', 'Value']
+                        data_rows = [[str(i+1), str(v)] for i, v in enumerate(data)]
+                elif isinstance(data, dict):
+                    columns = ["Metric", "Value"]
+                    data_rows = [[key, str(value)] for key, value in data.items()]
+                else:
+                    columns = ["Metric", "Value"]
+                    data_rows = [["No data available", "N/A"]]
+
+            # Apply default PDF design settings before generation
+            from utils.export_utils import merge_header_config
+            
+            # Merge user config with centralized defaults
+            final_config = merge_header_config(header_config, "comply")
+            
+            write_debug(f"DEBUG: Using PDF config: {final_config}")
+            
+            # Generate PDF with merged config
+            result = generate_pdf_report(columns, data_rows, final_config)
+            if not result:
+                raise ValueError("PDF generation returned None")
+
+            write_debug(f"DEBUG: PDF generated successfully for {cardType}")
+            return result
+                
+        except Exception as e:
+            write_debug(f"ERROR: Failed to generate comply PDF for {cardType} - {str(e)}")
+            import traceback
+            traceback.print_exc()
+            raise e

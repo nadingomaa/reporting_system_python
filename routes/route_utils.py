@@ -87,6 +87,18 @@ async def save_and_log_export(
     from config import get_database_connection_string
     global _export_cache
     
+    # DEBUG: Log function entry with all parameters
+    write_debug(f"[Save Export] ===== FUNCTION ENTRY =====")
+    write_debug(f"[Save Export] Parameters:")
+    write_debug(f"  - dashboard: {dashboard}")
+    write_debug(f"  - card_type: {card_type}")
+    write_debug(f"  - file_extension: {file_extension}")
+    write_debug(f"  - content size: {len(content) if content else 0} bytes")
+    write_debug(f"  - created_by: {created_by}")
+    write_debug(f"  - date_range: {date_range}")
+    write_debug(f"  - export_type: {export_type}")
+    write_debug(f"  - header_config keys: {list(header_config.keys()) if header_config else 'None'}")
+    
     # Ensure date_range is a dict (default to empty dict if None)
     if date_range is None:
         date_range = {}
@@ -147,7 +159,47 @@ async def save_and_log_export(
     write_debug(f"[Save Export] Setting lock for cache_key: {cache_key[:8]}...")
     
     # Get user info (default to "System")
+    # Extract username from JWT token if it's a Bearer token
     user_name = created_by or "System"
+    original_user_name = user_name
+    write_debug(f"[Save Export] Original created_by length: {len(user_name) if user_name else 0}")
+    
+    if user_name and (user_name.startswith("Bearer ") or len(user_name) > 500):
+        # Try to extract username from JWT token (decode if possible, or use first 50 chars)
+        try:
+            # Remove "Bearer " prefix if present
+            token = user_name.replace("Bearer ", "", 1) if user_name.startswith("Bearer ") else user_name
+            import base64
+            import json
+            # JWT format: header.payload.signature
+            parts = token.split(".")
+            if len(parts) >= 2:
+                # Decode payload (add padding if needed)
+                payload = parts[1]
+                payload += '=' * (4 - len(payload) % 4)  # Add padding
+                decoded = base64.urlsafe_b64decode(payload)
+                token_data = json.loads(decoded)
+                # Extract username from token
+                user_name = token_data.get("username") or token_data.get("name") or token_data.get("id", "user")
+                # Ensure it's not too long
+                user_name = str(user_name)[:255]
+                write_debug(f"[Save Export] Extracted username from JWT: {user_name[:50]}... (length: {len(user_name)})")
+            else:
+                # Not a valid JWT, use first 255 chars
+                user_name = user_name[:255]
+                write_debug(f"[Save Export] JWT extraction failed (invalid format), using truncated value: {user_name[:50]}...")
+        except Exception as jwt_err:
+            # If JWT decode fails, just use first 255 chars
+            user_name = user_name[:255]
+            write_debug(f"[Save Export] JWT decode error: {str(jwt_err)[:100]}, using truncated value: {user_name[:50]}...")
+    elif user_name and len(user_name) > 255:
+        # Truncate if too long (even if not a JWT)
+        user_name = user_name[:255]
+        write_debug(f"[Save Export] Truncated user_name from {len(original_user_name)} to 255 characters")
+    
+    # Final safety check - ensure user_name is never longer than 255
+    user_name = str(user_name)[:255] if user_name else "System"
+    write_debug(f"[Save Export] Final user_name length: {len(user_name)}, value: {user_name[:50]}...")
     
     # Build title for database check (we need this before creating filename)
     # Prioritize card_type for unique database titles, not header_config.title (which is always "Dashboard Report")
@@ -171,6 +223,27 @@ async def save_and_log_export(
         conn_check = pyodbc.connect(connection_string)
         cursor_check = conn_check.cursor()
         try:
+            # Convert title column from ntext to NVARCHAR in pre-check connection first
+            try:
+                cursor_check.execute(
+                    """
+                    SELECT DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_NAME = 'report_exports' 
+                      AND COLUMN_NAME = 'title'
+                      AND TABLE_SCHEMA = 'dbo'
+                    """
+                )
+                col_info = cursor_check.fetchone()
+                if col_info and col_info[0] and col_info[0].lower() == 'ntext':
+                    write_debug(f"[Save Export] Pre-check: Converting title column from ntext to NVARCHAR(500)")
+                    cursor_check.execute("UPDATE dbo.report_exports SET title = CASE WHEN title IS NULL THEN '' WHEN LEN(CAST(title AS NVARCHAR(MAX))) > 500 THEN LEFT(CAST(title AS NVARCHAR(MAX)), 500) ELSE CAST(title AS NVARCHAR(MAX)) END")
+                    conn_check.commit()
+                    cursor_check.execute("ALTER TABLE dbo.report_exports ALTER COLUMN title NVARCHAR(500) NOT NULL")
+                    conn_check.commit()
+                    write_debug(f"[Save Export] Pre-check: Title column converted successfully")
+            except Exception as conv_err:
+                write_debug(f"[Save Export] Pre-check: Column conversion error (will continue): {str(conv_err)}")
+            
             # Build date suffix for title matching
             date_suffix_check = ""
             if date_range and isinstance(date_range, dict):
@@ -188,22 +261,45 @@ async def save_and_log_export(
             export_title_check = f"{db_title}{date_suffix_check} - {date_str_check}"
             
             # Check for recent duplicate in database (last 30 seconds)
-            cursor_check.execute(
-                """
-                SELECT TOP 1 id, src FROM dbo.report_exports 
-                WHERE dashboard = ? 
-                  AND format = ?
-                  AND created_by = ?
-                  AND (
-                    title = ? 
-                    OR title LIKE ?
-                  )
-                  AND created_at >= DATEADD(SECOND, -30, GETDATE())
-                ORDER BY created_at DESC
-                """,
-                (dashboard, file_extension, user_name, export_title_check, f"{db_title}%")
-            )
-            existing_db = cursor_check.fetchone()
+            # Try with CAST first, fallback to simpler query if it fails
+            existing_db = None
+            try:
+                # Cast title to NVARCHAR to avoid ntext/nvarchar incompatibility
+                cursor_check.execute(
+                    """
+                    SELECT TOP 1 id, src FROM dbo.report_exports 
+                    WHERE dashboard = ? 
+                      AND format = ?
+                      AND created_by = ?
+                      AND (
+                        CAST(title AS NVARCHAR(MAX)) = ? 
+                        OR CAST(title AS NVARCHAR(MAX)) LIKE ?
+                      )
+                      AND created_at >= DATEADD(SECOND, -30, GETDATE())
+                    ORDER BY created_at DESC
+                    """,
+                    (dashboard, file_extension, user_name, export_title_check, f"{db_title}%")
+                )
+                existing_db = cursor_check.fetchone()
+            except Exception as query_err:
+                # If CAST fails, try without title comparison (use other fields only)
+                write_debug(f"[Save Export] Pre-check query with CAST failed, trying without title: {str(query_err)}")
+                try:
+                    cursor_check.execute(
+                        """
+                        SELECT TOP 1 id, src FROM dbo.report_exports 
+                        WHERE dashboard = ? 
+                          AND format = ?
+                          AND created_by = ?
+                          AND created_at >= DATEADD(SECOND, -30, GETDATE())
+                        ORDER BY created_at DESC
+                        """,
+                        (dashboard, file_extension, user_name)
+                    )
+                    existing_db = cursor_check.fetchone()
+                except Exception as fallback_err:
+                    write_debug(f"[Save Export] Pre-check fallback query also failed: {str(fallback_err)}")
+                    existing_db = None
             
             if existing_db:
                 # Found existing record - use it and return early (no file save needed)
@@ -241,13 +337,24 @@ async def save_and_log_export(
     # Build filename from card_type (priority) or header config
     # Always prefer cardType for filename even if header config has a different title
     filename_title = "Report"
-    if card_type:
-        # Convert cardType to readable name (e.g., "pendingPreparer" -> "Pending_Preparer")
-        filename_title = card_type
-        # Add spaces before capital letters
+    # Check for export_title in header_config first (for readable names like "Surveys by Status")
+    if header_config and header_config.get("export_title"):
+        filename_title = header_config.get("export_title")
+        filename_title = "".join(c for c in filename_title if c.isalnum() or c in (' ', '-', '_')).strip()
+        filename_title = filename_title.replace(' ', '_')
+    elif card_type:
+        # Use card_type as-is if it's already a readable name (contains spaces or is title case)
+        # Otherwise convert from camelCase/snake_case to readable name
         import re
-        filename_title = re.sub(r'([A-Z])', r' \1', filename_title).strip()
-        filename_title = filename_title.replace('_', ' ').title()
+        if ' ' in card_type or card_type.istitle() or any(c.isupper() for c in card_type if c.isalpha()):
+            # Already a readable name (e.g., "Compliance per complianceStatus")
+            filename_title = card_type
+        else:
+            # Convert cardType to readable name (e.g., "pendingPreparer" -> "Pending_Preparer")
+            filename_title = card_type
+            # Add spaces before capital letters
+            filename_title = re.sub(r'([A-Z])', r' \1', filename_title).strip()
+            filename_title = filename_title.replace('_', ' ').title()
         # Replace spaces with underscores for filename
         filename_title = filename_title.replace(' ', '_')
     elif header_config and header_config.get("title"):
@@ -306,22 +413,38 @@ async def save_and_log_export(
         relative_path = f"reports_export/{date_folder}/{readable_filename}"
     
     # Write file (only once)
+    write_debug(f"[Save Export] Attempting to write file to: {file_path}")
+    write_debug(f"[Save Export] File size: {len(content)} bytes")
+    write_debug(f"[Save Export] Directory exists: {os.path.exists(reports_export_dir)}")
     try:
         with open(file_path, 'wb') as f:
             f.write(content)
+        # Verify file was written
+        if os.path.exists(file_path):
+            file_size = os.path.getsize(file_path)
+            write_debug(f"[Save Export] File written successfully: {file_path} ({file_size} bytes)")
+        else:
+            write_debug(f"[Save Export] WARNING: File write completed but file does not exist at {file_path}")
     except Exception as file_err:
         # Remove lock on error
         if cache_key in _export_lock:
             del _export_lock[cache_key]
         write_debug(f"[Save Export] Failed to write file: {str(file_err)}")
+        import traceback
+        write_debug(f"[Save Export] File write error traceback: {traceback.format_exc()}")
         raise
     
     # Log to database
     export_id = None
+    write_debug(f"[Save Export] ===== DATABASE LOGGING START =====")
+    write_debug(f"[Save Export] Attempting to connect to database...")
     try:
         connection_string = get_database_connection_string()
+        write_debug(f"[Save Export] Connection string retrieved (length: {len(connection_string) if connection_string else 0})")
         conn = pyodbc.connect(connection_string)
+        write_debug(f"[Save Export] Database connection established successfully")
         cursor = conn.cursor()
+        write_debug(f"[Save Export] Cursor created successfully")
         try:
             # Ensure table exists with created_by and type
             cursor.execute(
@@ -345,6 +468,77 @@ async def save_and_log_export(
                 """
             )
             conn.commit()
+            
+            # Force convert title column from ntext to NVARCHAR(500)
+            # This fixes the "nvarchar and ntext are incompatible" error
+            # Use a more aggressive approach that works even if INFORMATION_SCHEMA is cached
+            write_debug(f"[Save Export] ===== COLUMN TYPE CONVERSION =====")
+            try:
+                write_debug(f"[Save Export] Forcing title column to NVARCHAR(500)")
+                # Try direct ALTER first (will work if column is already nvarchar or can be converted)
+                try:
+                    # First update any existing data to ensure compatibility
+                    write_debug(f"[Save Export] Step 1: Updating existing title values...")
+                    cursor.execute(
+                        """
+                        UPDATE dbo.report_exports 
+                        SET title = CASE 
+                          WHEN title IS NULL THEN ''
+                          WHEN LEN(CONVERT(NVARCHAR(MAX), title)) > 500 THEN LEFT(CONVERT(NVARCHAR(MAX), title), 500)
+                          ELSE CONVERT(NVARCHAR(500), title)
+                        END
+                        """
+                    )
+                    rows_updated = cursor.rowcount
+                    conn.commit()
+                    write_debug(f"[Save Export] Updated {rows_updated} existing title values")
+                except Exception as update_err:
+                    write_debug(f"[Save Export] Update step warning: {str(update_err)}")
+                    write_debug(f"[Save Export] Update error type: {type(update_err).__name__}")
+                    import traceback
+                    write_debug(f"[Save Export] Update error traceback: {traceback.format_exc()}")
+                    conn.rollback()
+                
+                # Now force ALTER - this will work if it's ntext or do nothing if already nvarchar
+                try:
+                    write_debug(f"[Save Export] Step 2: Attempting ALTER TABLE to set column type...")
+                    cursor.execute("ALTER TABLE dbo.report_exports ALTER COLUMN title NVARCHAR(500) NOT NULL")
+                    conn.commit()
+                    write_debug(f"[Save Export] ✓ Title column successfully set to NVARCHAR(500)")
+                except Exception as alter_direct_err:
+                    # If direct ALTER fails, try drop/recreate approach
+                    write_debug(f"[Save Export] ✗ Direct ALTER failed: {str(alter_direct_err)}")
+                    write_debug(f"[Save Export] ALTER error type: {type(alter_direct_err).__name__}")
+                    write_debug(f"[Save Export] Trying drop/recreate approach...")
+                    try:
+                        # Drop and recreate the column
+                        write_debug(f"[Save Export] Step 3a: Adding temporary column...")
+                        cursor.execute("ALTER TABLE dbo.report_exports ADD title_temp NVARCHAR(500) NOT NULL DEFAULT ''")
+                        conn.commit()
+                        write_debug(f"[Save Export] Step 3b: Copying data to temp column...")
+                        cursor.execute("UPDATE dbo.report_exports SET title_temp = CONVERT(NVARCHAR(500), title)")
+                        rows_copied = cursor.rowcount
+                        conn.commit()
+                        write_debug(f"[Save Export] Copied {rows_copied} rows to temp column")
+                        write_debug(f"[Save Export] Step 3c: Dropping old column...")
+                        cursor.execute("ALTER TABLE dbo.report_exports DROP COLUMN title")
+                        conn.commit()
+                        write_debug(f"[Save Export] Step 3d: Renaming temp column...")
+                        cursor.execute("EXEC sp_rename 'dbo.report_exports.title_temp', 'title', 'COLUMN'")
+                        conn.commit()
+                        write_debug(f"[Save Export] ✓ Title column converted using drop/recreate method")
+                    except Exception as recreate_err:
+                        write_debug(f"[Save Export] ✗ Drop/recreate also failed: {str(recreate_err)}")
+                        write_debug(f"[Save Export] Recreate error type: {type(recreate_err).__name__}")
+                        import traceback
+                        write_debug(f"[Save Export] Recreate error traceback: {traceback.format_exc()}")
+                        # Continue - we'll use CONVERT in all queries
+            except Exception as alter_err:
+                write_debug(f"[Save Export] ✗✗✗ Title column conversion failed: {str(alter_err)}")
+                write_debug(f"[Save Export] Conversion error type: {type(alter_err).__name__}")
+                import traceback
+                write_debug(f"[Save Export] Conversion traceback: {traceback.format_exc()}")
+                # Continue - we'll use CONVERT in all queries
             
             # Add created_by column if it doesn't exist
             try:
@@ -383,37 +577,84 @@ async def save_and_log_export(
             # Insert export record (only if not already exists)
             # Use db_title for database record (can include header config title)
             export_title = f"{db_title}{date_suffix} - {date_str}"
+            write_debug(f"[Save Export] Generated export_title: '{export_title}' (length: {len(export_title)})")
             
             # Determine type based on export_type parameter or dashboard
             # If export_type is provided, use it; otherwise determine from dashboard
             if not export_type:
-                # Dashboard reports: incidents, kris, risks, controls
+                # Dashboard reports: incidents, kris, risks, controls, comply
                 # Transaction reports: everything else
                 export_type = "transaction"  # Default
-                if dashboard and dashboard.lower() in ['incidents', 'kris', 'risks', 'controls']:
+                if dashboard and dashboard.lower() in ['incidents', 'kris', 'risks', 'controls', 'comply']:
                     export_type = "dashboard"
+            write_debug(f"[Save Export] Determined export_type: '{export_type}'")
+            write_debug(f"[Save Export] Database values to insert:")
+            write_debug(f"  - title: '{export_title[:100]}...' (truncated, full length: {len(export_title)})")
+            write_debug(f"  - src: '{relative_path}'")
+            write_debug(f"  - format: '{file_extension}'")
+            write_debug(f"  - dashboard: '{dashboard}'")
+            write_debug(f"  - type: '{export_type}'")
+            write_debug(f"  - created_by: '{user_name}'")
             
             # Check if record already exists with same parameters within the last 30 seconds
             # Check by multiple fields to catch duplicates even with different file paths or timestamps
             # This prevents the same export from being logged 3 times
-            cursor.execute(
-                """
-                SELECT TOP 1 id, src FROM dbo.report_exports 
-                WHERE (
-                  src = ? 
-                  OR (
-                    title = ? 
-                    AND dashboard = ? 
-                    AND format = ?
-                    AND created_by = ?
-                  )
+            # Use CONVERT instead of CAST, and handle ntext/nvarchar incompatibility more robustly
+            write_debug(f"[Save Export] ===== DUPLICATE CHECK =====")
+            existing = None
+            try:
+                # Try with CONVERT first (more reliable for ntext)
+                write_debug(f"[Save Export] Executing duplicate check query with CONVERT...")
+                write_debug(f"[Save Export] Query parameters: src='{relative_path}', title='{export_title[:50]}...', dashboard='{dashboard}', format='{file_extension}', created_by='{user_name}'")
+                cursor.execute(
+                    """
+                    SELECT TOP 1 id, src FROM dbo.report_exports 
+                    WHERE (
+                      src = ? 
+                      OR (
+                        CONVERT(NVARCHAR(MAX), title) = ? 
+                        AND dashboard = ? 
+                        AND format = ?
+                        AND created_by = ?
+                      )
+                    )
+                    AND created_at >= DATEADD(SECOND, -30, GETDATE())
+                    ORDER BY created_at DESC
+                    """,
+                    (relative_path, export_title, dashboard, file_extension, user_name)
                 )
-                AND created_at >= DATEADD(SECOND, -30, GETDATE())
-                ORDER BY created_at DESC
-                """,
-                (relative_path, export_title, dashboard, file_extension, user_name)
-            )
-            existing = cursor.fetchone()
+                existing = cursor.fetchone()
+                if existing:
+                    write_debug(f"[Save Export] Duplicate found: id={existing[0]}, src={existing[1]}")
+                else:
+                    write_debug(f"[Save Export] No duplicate found")
+            except Exception as query_err:
+                write_debug(f"[Save Export] Duplicate check query failed: {str(query_err)}")
+                write_debug(f"[Save Export] Error type: {type(query_err).__name__}")
+                import traceback
+                write_debug(f"[Save Export] Query error traceback: {traceback.format_exc()}")
+                # Fallback: check only by src (file path) without title comparison
+                try:
+                    write_debug(f"[Save Export] Trying fallback duplicate check (by src only)...")
+                    cursor.execute(
+                        """
+                        SELECT TOP 1 id, src FROM dbo.report_exports 
+                        WHERE src = ? 
+                          AND created_at >= DATEADD(SECOND, -30, GETDATE())
+                        ORDER BY created_at DESC
+                        """,
+                        (relative_path,)
+                    )
+                    existing = cursor.fetchone()
+                    if existing:
+                        write_debug(f"[Save Export] Fallback duplicate found: id={existing[0]}, src={existing[1]}")
+                    else:
+                        write_debug(f"[Save Export] Fallback: No duplicate found")
+                except Exception as fallback_err:
+                    write_debug(f"[Save Export] Fallback duplicate check also failed: {str(fallback_err)}")
+                    write_debug(f"[Save Export] Fallback error type: {type(fallback_err).__name__}")
+                    write_debug(f"[Save Export] Fallback error traceback: {traceback.format_exc()}")
+                    existing = None
             
             if existing:
                 # Use existing record ID and path (prevent duplicate database entries)
@@ -430,21 +671,123 @@ async def save_and_log_export(
                         readable_filename = os.path.basename(existing_src)
             else:
                 # Insert new record
-                cursor.execute(
-                    """
-                    INSERT INTO dbo.report_exports (title, src, format, dashboard, type, created_by)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    """,
-                    (export_title, relative_path, file_extension, dashboard, export_type, user_name)
-                )
-                conn.commit()
-                export_id = cursor.execute("SELECT @@IDENTITY").fetchone()[0]
-                write_debug(f"[Save Export] Created new export record ID: {export_id} for {relative_path} (type: {export_type})")
+                write_debug(f"[Save Export] ===== INSERT NEW RECORD =====")
+                # Ensure all values fit within column constraints
+                # Column sizes: title=500, src=1024, format=20, dashboard=100, type=50, created_by=255
+                safe_title = str(export_title)[:500] if export_title else "Report"
+                safe_src = str(relative_path)[:1024] if relative_path else ""
+                safe_format = str(file_extension)[:20] if file_extension else ""
+                safe_dashboard = str(dashboard)[:100] if dashboard else ""
+                safe_type = str(export_type)[:50] if export_type else ""
+                safe_created_by = str(user_name)[:255] if user_name else "System"
+                
+                write_debug(f"[Save Export] Safe values (truncated to column sizes):")
+                write_debug(f"  - title: '{safe_title[:50]}...' (length: {len(safe_title)}, max: 500)")
+                write_debug(f"  - src: '{safe_src[:50]}...' (length: {len(safe_src)}, max: 1024)")
+                write_debug(f"  - format: '{safe_format}' (length: {len(safe_format)}, max: 20)")
+                write_debug(f"  - dashboard: '{safe_dashboard}' (length: {len(safe_dashboard)}, max: 100)")
+                write_debug(f"  - type: '{safe_type}' (length: {len(safe_type)}, max: 50)")
+                write_debug(f"  - created_by: '{safe_created_by[:50]}...' (length: {len(safe_created_by)}, max: 255)")
+                
+                # Check if any values were truncated
+                if len(export_title) > 500:
+                    write_debug(f"[Save Export] WARNING: title was truncated from {len(export_title)} to 500")
+                if len(relative_path) > 1024:
+                    write_debug(f"[Save Export] WARNING: src was truncated from {len(relative_path)} to 1024")
+                if len(file_extension) > 20:
+                    write_debug(f"[Save Export] WARNING: format was truncated from {len(file_extension)} to 20")
+                if len(dashboard) > 100:
+                    write_debug(f"[Save Export] WARNING: dashboard was truncated from {len(dashboard)} to 100")
+                if len(export_type) > 50:
+                    write_debug(f"[Save Export] WARNING: type was truncated from {len(export_type)} to 50")
+                if len(user_name) > 255:
+                    write_debug(f"[Save Export] WARNING: created_by was truncated from {len(user_name)} to 255")
+                
+                try:
+                    # Try direct INSERT first
+                    write_debug(f"[Save Export] Attempting direct INSERT...")
+                    cursor.execute(
+                        """
+                        INSERT INTO dbo.report_exports (title, src, format, dashboard, type, created_by)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        """,
+                        (safe_title, safe_src, safe_format, safe_dashboard, safe_type, safe_created_by)
+                    )
+                    write_debug(f"[Save Export] INSERT statement executed, committing...")
+                    conn.commit()
+                    write_debug(f"[Save Export] Commit successful, getting identity...")
+                    export_id = cursor.execute("SELECT @@IDENTITY").fetchone()[0]
+                    write_debug(f"[Save Export] ✓✓✓ SUCCESS: Created new export record ID: {export_id} for {relative_path} (type: {export_type})")
+                except Exception as insert_err:
+                    write_debug(f"[Save Export] ✗✗✗ INSERT failed: {str(insert_err)}")
+                    write_debug(f"[Save Export] INSERT error type: {type(insert_err).__name__}")
+                    write_debug(f"[Save Export] INSERT error args: {insert_err.args if hasattr(insert_err, 'args') else 'N/A'}")
+                    import traceback
+                    write_debug(f"[Save Export] INSERT error traceback: {traceback.format_exc()}")
+                    # Try with CONVERT in INSERT if direct insert fails
+                    try:
+                        write_debug(f"[Save Export] Retrying INSERT with explicit CONVERT...")
+                        cursor.execute(
+                            """
+                            INSERT INTO dbo.report_exports (title, src, format, dashboard, type, created_by)
+                            VALUES (CONVERT(NVARCHAR(500), ?), ?, ?, ?, ?, ?)
+                            """,
+                            (safe_title, safe_src, safe_format, safe_dashboard, safe_type, safe_created_by)
+                        )
+                        conn.commit()
+                        export_id = cursor.execute("SELECT @@IDENTITY").fetchone()[0]
+                        write_debug(f"[Save Export] ✓✓✓ SUCCESS (with CONVERT): Created new export record ID: {export_id}")
+                    except Exception as retry_err:
+                        write_debug(f"[Save Export] ✗✗✗ INSERT retry with CONVERT also failed: {str(retry_err)}")
+                        write_debug(f"[Save Export] Retry error type: {type(retry_err).__name__}")
+                        write_debug(f"[Save Export] Retry error traceback: {traceback.format_exc()}")
+                        # Last resort: try inserting without title, then update it
+                        try:
+                            write_debug(f"[Save Export] Trying INSERT without title, then UPDATE (last resort)...")
+                            cursor.execute(
+                                """
+                                INSERT INTO dbo.report_exports (title, src, format, dashboard, type, created_by)
+                                VALUES ('', ?, ?, ?, ?, ?)
+                                """,
+                                (safe_src, safe_format, safe_dashboard, safe_type, safe_created_by)
+                            )
+                            conn.commit()
+                            export_id = cursor.execute("SELECT @@IDENTITY").fetchone()[0]
+                            write_debug(f"[Save Export] INSERT without title succeeded, ID: {export_id}, now updating title...")
+                            # Now update the title
+                            cursor.execute(
+                                """
+                                UPDATE dbo.report_exports 
+                                SET title = CONVERT(NVARCHAR(500), ?)
+                                WHERE id = ?
+                                """,
+                                (safe_title, export_id)
+                            )
+                            conn.commit()
+                            write_debug(f"[Save Export] ✓✓✓ SUCCESS (with UPDATE workaround): Created new export record ID: {export_id}")
+                        except Exception as final_err:
+                            write_debug(f"[Save Export] ✗✗✗ All INSERT attempts failed!")
+                            write_debug(f"[Save Export] Final error: {str(final_err)}")
+                            write_debug(f"[Save Export] Final error type: {type(final_err).__name__}")
+                            write_debug(f"[Save Export] Final error traceback: {traceback.format_exc()}")
+                            raise
         finally:
-            cursor.close()
-            conn.close()
+            write_debug(f"[Save Export] Closing database connection...")
+            try:
+                cursor.close()
+                write_debug(f"[Save Export] Cursor closed")
+            except Exception as close_cursor_err:
+                write_debug(f"[Save Export] Error closing cursor: {str(close_cursor_err)}")
+            try:
+                conn.close()
+                write_debug(f"[Save Export] Connection closed")
+            except Exception as close_conn_err:
+                write_debug(f"[Save Export] Error closing connection: {str(close_conn_err)}")
     except Exception as e:
-        write_debug(f"[Save Export] Failed to log export: {str(e)}")
+        write_debug(f"[Save Export] ✗✗✗ EXCEPTION in database logging section: {str(e)}")
+        write_debug(f"[Save Export] Exception type: {type(e).__name__}")
+        import traceback
+        write_debug(f"[Save Export] Full exception traceback: {traceback.format_exc()}")
         # Continue even if logging fails
     finally:
         # Always remove lock, even if there was an error
@@ -461,7 +804,28 @@ async def save_and_log_export(
     # Cache the result to prevent duplicate saves (with timestamp)
     _export_cache[cache_key] = (result, time.time())
     
-    write_debug(f"[Save Export] Successfully saved export: {readable_filename} (ID: {export_id})")
+    # Final verification
+    write_debug(f"[Save Export] ===== FINAL RESULT =====")
+    file_exists = os.path.exists(file_path)
+    db_logged = export_id is not None
+    
+    write_debug(f"[Save Export] Successfully saved export: {readable_filename}")
+    write_debug(f"[Save Export] File path: {file_path}")
+    write_debug(f"[Save Export] Relative path: {relative_path}")
+    write_debug(f"[Save Export] Export ID: {export_id}")
+    write_debug(f"[Save Export] Final verification:")
+    write_debug(f"  - File exists: {file_exists}")
+    write_debug(f"  - DB logged: {db_logged}")
+    if file_exists:
+        actual_size = os.path.getsize(file_path)
+        write_debug(f"  - Actual file size on disk: {actual_size} bytes")
+        write_debug(f"  - Expected file size: {len(content)} bytes")
+        write_debug(f"  - Size match: {actual_size == len(content)}")
+    else:
+        write_debug(f"  - ✗✗✗ ERROR: File does not exist at {file_path}")
+    if not db_logged:
+        write_debug(f"  - ✗✗✗ WARNING: Export was NOT saved to database (export_id is None)")
+    write_debug(f"[Save Export] ===== FUNCTION EXIT =====")
     
     return result
 

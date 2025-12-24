@@ -895,3 +895,337 @@ class ExcelService:
         except Exception as e:
             print(f"Error generating risks Excel: {e}")
             raise e
+
+    async def generate_comply_excel(self, comply_data: Dict[str, Any], startDate: str, endDate: str, header_config: Dict[str, Any], cardType: str = None, onlyCard: bool = False, onlyOverallTable: bool = False, onlyChart: bool = False) -> bytes:
+        """Generate comply Excel report - mirrors controls/risks/incidents/kris behavior"""
+        try:
+            from routes.route_utils import generate_excel_report, write_debug
+            import re
+            write_debug(f"Generating comply Excel report for {startDate} to {endDate}")
+            write_debug(f"cardType={cardType}, onlyCard={onlyCard}, onlyOverallTable={onlyOverallTable}, onlyChart={onlyChart}")
+
+            # Map frontend chart/card IDs to backend report names
+            # Backend returns reports with descriptive names like "Survey Completion Rate", "Bank Questions details", etc.
+            report_name_map = {
+                # Chart IDs from frontend -> Backend report names
+                'surveysByStatus': 'Surveys by Status',
+                'complianceByStatus': 'Compliance per complianceStatus',
+                'complianceByProgress': 'Compliance per progressStatus',
+                'complianceByApproval': 'Compliance per approval_status',
+                'avgScorePerSurvey': 'Average Score Per Survey',
+                'complianceByControlCategory': 'Compliance by Control Category',
+                'topFailedControls': 'Top Failed Controls',
+                'controlsPerCategory': 'Controls no. per category',
+                'risksPerCategory': 'Risks no. per category',
+                'impactedAreasTrend': 'Impacted Areas Trend Over Time',
+                # Card IDs from frontend -> Backend report names
+                'totalSurveys': 'Surveys by Status',
+                'totalCompliance': 'Compliance Details',
+                'avgCompletionRate': 'Survey Completion Rate',
+                'complianceWithoutEvidence': 'Compliance controls without evidence',
+                # Table IDs from frontend -> Backend report names
+                'complianceDetails': 'Compliance Details',
+                'surveyCompletionRate': 'Survey Completion Rate',
+                'bankQuestionsDetails': 'Bank Questions details',
+                'risksPerCategoryDetails': 'Risks per category details',
+                'controlsPerCategoryDetails': 'Controls per category details',
+                'controlsPerDomainsDetails': 'Controls per domains Details',
+                'questionsPerCategory': 'Questions Per Category',
+                'impactedAreasByControls': 'Impacted Areas by Number of Linked Controls',
+                'surveyParticipationByDepartment': 'Survey Participation by Department',
+                'activeFunctions': 'Most Active vs Least Active Functions (Answer Count)',
+                'surveyCoverageByCategory': 'Survey Coverage by Category (How many categories included per survey)',
+                'complianceManagementDetails': 'Compliance managment details',
+                # Additional chart mappings
+                'questionsPerType': 'Questions no. per type',
+                'questionsPerReferences': 'Questions no. per References',
+                'controlNosPerDomains': 'Control Nos. per Domains',
+            }
+
+            # Get the actual report name from the map, or use cardType as-is
+            report_name = report_name_map.get(cardType, cardType)
+            
+            # Try to get data from comply_data
+            # First try cardType (route handler passes data with cardType as key)
+            data = comply_data.get(cardType, [])
+            
+            # If not found, try report name (in case full comply_data was passed)
+            if not data:
+                data = comply_data.get(report_name, [])
+            
+            # If still no data, try to find it by partial match
+            if not data and cardType:
+                for key in comply_data.keys():
+                    if isinstance(key, str) and cardType.lower() in key.lower():
+                        data = comply_data[key]
+                        report_name = key
+                        break
+            
+            data = data or []
+            write_debug(f"Comply Excel export - cardType={cardType}, report_name={report_name}, data type={type(data)}, len={len(data) if isinstance(data, list) else 'N/A'}")
+
+            columns: List[str] = []
+            data_rows: List[List[str]] = []
+
+            def format_column_name(key: str) -> str:
+                """Convert snake_case or camelCase to Title Case"""
+                return re.sub(r'[_]|([a-z])([A-Z])', r'\1 \2', str(key)).title()
+
+            # CHART EXPORT
+            if onlyChart and cardType:
+                chart_type = header_config.get("chartType") or header_config.get("chart_type")
+                
+                # Handle special chart types
+                if isinstance(data, list) and data:
+                    first_item = data[0]
+                    if isinstance(first_item, dict):
+                        keys = list(first_item.keys())
+                        
+                        # Handle multi-column charts (like monthlyTrendByType)
+                        if len(keys) >= 3 and any(k.lower() in ['period', 'month', 'date', 'name'] for k in keys):
+                            # Find label key and value keys
+                            label_key = None
+                            value_keys = []
+                            for key in keys:
+                                if key.lower() in ['period', 'name', 'month', 'date']:
+                                    label_key = key
+                                else:
+                                    value_keys.append(key)
+                            
+                            if label_key:
+                                columns = [format_column_name(label_key)] + [format_column_name(k) for k in value_keys]
+                                
+                                labels = []
+                                series_list = []
+                                for item in data:
+                                    row = [str(item.get(label_key, "N/A"))]
+                                    labels.append(str(item.get(label_key, "N/A")))
+                                    for k in value_keys:
+                                        row.append(str(item.get(k, 0)))
+                                    data_rows.append(row)
+                                
+                                # Create series for stacked bar chart
+                                for value_key in value_keys:
+                                    series_values = [float(item.get(value_key, 0) or 0) for item in data]
+                                    series_list.append({
+                                        'name': format_column_name(value_key),
+                                        'values': series_values
+                                    })
+                                
+                                header_config["chart_data"] = {
+                                    "labels": labels,
+                                    "series": series_list
+                                }
+                                header_config["chart_type"] = "multiBar"
+                            else:
+                                # Fallback: use first key as label, rest as values
+                                label_key = keys[0]
+                                value_keys = keys[1:]
+                                columns = [format_column_name(label_key)] + [format_column_name(k) for k in value_keys]
+                                
+                                labels = []
+                                series_list = []
+                                for item in data:
+                                    row = [str(item.get(label_key, "N/A"))]
+                                    labels.append(str(item.get(label_key, "N/A")))
+                                    for k in value_keys:
+                                        row.append(str(item.get(k, 0)))
+                                    data_rows.append(row)
+                                
+                                for value_key in value_keys:
+                                    series_values = [float(item.get(value_key, 0) or 0) for item in data]
+                                    series_list.append({
+                                        'name': format_column_name(value_key),
+                                        'values': series_values
+                                    })
+                                
+                                header_config["chart_data"] = {
+                                    "labels": labels,
+                                    "series": series_list
+                                }
+                                header_config["chart_type"] = "multiBar"
+                        elif len(keys) >= 2:
+                            # Standard 2-column chart
+                            # For compliance charts, intelligently detect label vs value keys
+                            label_key = None
+                            value_key = None
+                            
+                            # Known status/label keys (exact matches first, then partial)
+                            status_key_exact = ['complianceStatus', 'progressStatus', 'approval_status']
+                            status_key_partial = ['status', 'name', 'label', 'category', 'type']
+                            # Known value keys
+                            value_key_exact = ['Compliance', 'count', 'total', 'value']
+                            value_key_partial = ['amount', 'number', 'sum']
+                            
+                            # First pass: look for exact matches
+                            for key in keys:
+                                if key in status_key_exact:
+                                    label_key = key
+                                elif key in value_key_exact:
+                                    value_key = key
+                            
+                            # Second pass: look for partial matches if exact not found
+                            if label_key is None:
+                                for key in keys:
+                                    key_lower = key.lower()
+                                    if any(sk in key_lower for sk in status_key_partial):
+                                        label_key = key
+                                        break
+                            
+                            if value_key is None:
+                                for key in keys:
+                                    key_lower = key.lower()
+                                    if any(vk in key_lower for vk in value_key_partial) or key == 'Compliance':
+                                        value_key = key
+                                        break
+                            
+                            # Fallback: if still not found, use first as label, last as value
+                            # But prioritize 'Compliance' as value if it exists
+                            if value_key is None and 'Compliance' in keys:
+                                value_key = 'Compliance'
+                                label_key = [k for k in keys if k != 'Compliance'][0] if len(keys) > 1 else keys[0]
+                            
+                            if label_key is None:
+                                label_key = keys[0]
+                            if value_key is None:
+                                value_key = keys[-1]
+                            
+                            write_debug(f"Chart key detection - keys={keys}, label_key={label_key}, value_key={value_key}")
+                            
+                            columns = [format_column_name(label_key), format_column_name(value_key)]
+                            for item in data:
+                                name = item.get(label_key, "N/A")
+                                value = item.get(value_key, 0)
+                                data_rows.append([name, str(value)])
+                        else:
+                            key1 = keys[0]
+                            columns = [format_column_name(key1), "Value"]
+                            for item in data:
+                                name = item.get(key1, "N/A")
+                                data_rows.append([name, 0])
+                    else:
+                        data_rows = [[str(first_item), "0"]]
+                        columns = ["Label", "Value"]
+                else:
+                    data_rows = [["No data available", "0"]]
+                    columns = ["Label", "Value"]
+
+                # Default chart types for comply
+                default_type_by_card = {
+                    "surveysByStatus": "pie",
+                    "complianceByStatus": "pie",
+                    "complianceByProgress": "pie",
+                    "complianceByApproval": "pie",
+                    "avgScorePerSurvey": "bar",
+                    "complianceByControlCategory": "bar",
+                    "topFailedControls": "bar",
+                    "controlsPerCategory": "bar",
+                    "risksPerCategory": "bar",
+                    "impactedAreasTrend": "line",
+                }
+                
+                if chart_type not in {"bar", "line", "pie", "multiBar"}:
+                    chart_type = default_type_by_card.get(cardType, "bar")
+                header_config["chart_type"] = chart_type
+
+                # Extract chart data from rows (for single-value charts)
+                if header_config.get("chart_type") != "multiBar":
+                    chart_labels: List[str] = []
+                    chart_values: List[float] = []
+                    for row in data_rows:
+                        if len(row) >= 2:
+                            chart_labels.append(str(row[0]))
+                            try:
+                                chart_values.append(float(row[1]))
+                            except Exception:
+                                chart_values.append(0)
+                    if chart_labels and chart_values:
+                        header_config["chart_data"] = {"labels": chart_labels, "values": chart_values}
+                
+                return generate_excel_report(columns, data_rows, header_config)
+
+            # TABLE EXPORT
+            elif onlyOverallTable and cardType:
+                if isinstance(data, list) and len(data) > 0:
+                    first_item = data[0]
+                    if isinstance(first_item, dict):
+                        raw_keys = list(first_item.keys())
+                        columns = ['#'] + [format_column_name(k) for k in raw_keys]
+                        data_rows = []
+                        for i, row in enumerate(data, 1):
+                            if isinstance(row, dict):
+                                values = [str(row.get(k, '')) for k in raw_keys]
+                                data_rows.append([str(i)] + values)
+                            elif isinstance(row, (list, tuple)):
+                                vals = [str(v) for v in row]
+                                data_rows.append([str(i)] + vals)
+                            else:
+                                data_rows.append([str(i), str(row)])
+                    elif isinstance(first_item, (list, tuple)):
+                        num_cols = len(first_item)
+                        columns = ['#'] + [f'C{idx+1}' for idx in range(num_cols)]
+                        data_rows = []
+                        for i, row in enumerate(data, 1):
+                            vals = [str(v) for v in (row if isinstance(row, (list, tuple)) else [row])]
+                            data_rows.append([str(i)] + vals)
+                    else:
+                        columns = ['#', 'Value']
+                        data_rows = [[str(i+1), str(v)] for i, v in enumerate(data)]
+                else:
+                    columns = ['#', 'Value']
+                    data_rows = [['1', 'No data available']]
+                
+                write_debug(f"About to call generate_excel_report for comply table")
+                result = generate_excel_report(columns, data_rows, header_config)
+                write_debug(f"Comply Excel report generated, returning {len(result) if result else 0} bytes")
+                return result
+
+            # CARD SUMMARY EXPORT
+            elif onlyCard and cardType:
+                write_debug(f"Generating comply Excel report for card {cardType}, {startDate} to {endDate}")
+                
+                if isinstance(data, list) and data:
+                    first_item = data[0]
+                    if isinstance(first_item, dict):
+                        raw_keys = list(first_item.keys())
+                        columns = ['#'] + [format_column_name(k) for k in raw_keys]
+                        data_rows = []
+                        for i, item in enumerate(data, 1):
+                            if isinstance(item, dict):
+                                values = [str(item.get(k, 'N/A')) for k in raw_keys]
+                                data_rows.append([str(i)] + values)
+                            elif isinstance(item, (list, tuple)):
+                                vals = [str(v) for v in item]
+                                data_rows.append([str(i)] + vals)
+                            else:
+                                data_rows.append([str(i), str(item)])
+                    else:
+                        columns = ['#', 'Value']
+                        data_rows = [[str(i+1), str(v)] for i, v in enumerate(data)]
+                elif isinstance(data, dict):
+                    columns = ["Metric", "Value"]
+                    data_rows = [[key, str(value)] for key, value in data.items()]
+                else:
+                    columns = ["Metric", "Value"]
+                    data_rows = [["No data available", "N/A"]]
+                
+                return generate_excel_report(columns, data_rows, header_config)
+
+            # DEFAULT simple workbook if no specific mode
+            else:
+                from openpyxl import Workbook
+                wb = Workbook()
+                ws = wb.active
+                ws.title = header_config.get('title', 'Comply Report')
+                ws['A1'] = 'Comply Dashboard Report'
+                ws['A2'] = 'Generated Successfully'
+                from io import BytesIO
+                output = BytesIO()
+                wb.save(output)
+                return output.getvalue()
+                
+        except Exception as e:
+            print(f"Error generating comply Excel: {e}")
+            import traceback
+            traceback.print_exc()
+            raise e
